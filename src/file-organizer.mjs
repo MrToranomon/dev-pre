@@ -4,10 +4,11 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { orderFolderRules } from "./folder-rules.mjs";
+import crypto from "node:crypto";
+import { assertSafeName, assertNoLinks, atomicJson, withOperationLock, moveEntrySafely as safeMove, within } from "./safety.mjs";
 
 const APP_NAME = "Orbit Organizer";
-const APP_VERSION = "2.2.0";
-const HISTORY_DIRECTORY = ".file-organizer/history";
+const APP_VERSION = "3.0.0";
 const PROTECTED_EXTENSIONS = new Set([
   ".app", ".appx", ".appxbundle", ".bat", ".cmd", ".com", ".cpl", ".dll", ".exe", ".gadget",
   ".hta", ".inf", ".ins", ".iso", ".jar", ".js", ".jse", ".lnk",
@@ -54,6 +55,7 @@ function expandEnvironmentVariables(value, environment = process.env) {
 }
 
 function assertSafeSegment(value, label) {
+  assertSafeName(value, label);
   if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be a non-empty string.`);
   if (value === "." || value === ".." || path.isAbsolute(value) || /[\\/:*?"<>|]/.test(value)) {
     throw new Error(`${label} must be a single safe folder name: ${JSON.stringify(value)}`);
@@ -68,8 +70,7 @@ function normalizeExtension(extension, category) {
 }
 
 function isWithin(parent, child) {
-  const relative = path.relative(parent, child);
-  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+  return within(parent, child);
 }
 
 export async function loadConfig(configFile, environment = process.env) {
@@ -83,7 +84,7 @@ export async function loadConfig(configFile, environment = process.env) {
   }
 
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Configuration must be a JSON object.");
-  if (typeof raw.source !== "string" || typeof raw.destination !== "string") {
+  if (typeof raw.source !== "string" || !raw.source.trim() || typeof raw.destination !== "string" || !raw.destination.trim()) {
     throw new Error("Configuration requires string values for source and destination.");
   }
   if (!raw.categories || typeof raw.categories !== "object" || Array.isArray(raw.categories)) {
@@ -92,9 +93,10 @@ export async function loadConfig(configFile, environment = process.env) {
 
   const source = path.resolve(expandEnvironmentVariables(raw.source, environment));
   const destination = path.resolve(expandEnvironmentVariables(raw.destination, environment));
-  if (source === destination) throw new Error("Source and destination must be different folders.");
+  if (path.relative(source, destination) === "") throw new Error("Source and destination must be different folders.");
   if (isWithin(source, destination)) throw new Error("Destination must be outside source.");
 
+  if (raw.options !== undefined && (!raw.options || typeof raw.options !== "object" || Array.isArray(raw.options))) throw new Error("options must be an object.");
   const options = { ...DEFAULT_OPTIONS, ...(raw.options ?? {}) };
   if (typeof options.allowInstallerFiles !== "boolean") throw new Error("options.allowInstallerFiles must be true or false.");
 
@@ -162,7 +164,7 @@ export async function loadConfig(configFile, environment = process.env) {
     throw new Error("options.stateDirectory must be outside source.");
   }
 
-  const categoryNames = [...new Set([...Object.keys(raw.categories), ...folderRules.map((rule) => rule.category)])];
+  const categoryNames = [...new Set([...Object.keys(raw.categories), ...Object.keys(folderCategories), ...(options.includeUnknown ? [options.unknownCategory] : [])])];
   const categoryDestinations = raw.categoryDestinations ?? {};
   if (!categoryDestinations || typeof categoryDestinations !== "object" || Array.isArray(categoryDestinations)) {
     throw new Error("categoryDestinations must be an object when provided.");
@@ -180,7 +182,7 @@ export async function loadConfig(configFile, environment = process.env) {
     const categoryDestination = configured
       ? path.resolve(expandEnvironmentVariables(configured, environment))
       : path.join(destination, category);
-    if (categoryDestination === source || isWithin(source, categoryDestination)) {
+    if (path.relative(categoryDestination, source) === "" || isWithin(source, categoryDestination) || isWithin(categoryDestination, source)) {
       throw new Error(`Destination for ${category} must be outside source.`);
     }
     if (path.parse(categoryDestination).root === categoryDestination) {
@@ -217,10 +219,11 @@ function dateBucket(date, mode) {
 
 async function pathExists(filePath) {
   try {
-    await fs.access(filePath);
+    await fs.lstat(filePath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
   }
 }
 
@@ -234,6 +237,22 @@ async function directorySize(directory) {
     else if (entry.isFile()) total += (await fs.stat(entryPath)).size;
   }
   return total;
+}
+
+async function directoryFingerprint(directory) {
+  const hash = crypto.createHash("sha256");
+  async function visit(current) {
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const location = path.join(current, entry.name);
+      const stats = await fs.lstat(location);
+      hash.update(JSON.stringify([path.relative(directory, location), stats.size, stats.mtimeMs, stats.ino, stats.mode]));
+      if (stats.isSymbolicLink()) throw new Error(`フォルダ内のリンクを検知しました: ${location}`);
+      if (stats.isDirectory()) await visit(location);
+    }
+  }
+  await visit(directory);
+  return hash.digest("hex");
 }
 
 async function unusedTarget(target, reserved = new Set(), suffix = null) {
@@ -264,6 +283,7 @@ export async function createPlan(config, now = new Date()) {
   const minimumModifiedTime = now.getTime() - config.options.minimumAgeMinutes * 60_000;
 
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))) {
+    try {
     const sourcePath = path.join(config.source, entry.name);
     if (config.options.ignore.some((pattern) => wildcardMatches(entry.name, pattern))) {
       skipped.push({ name: entry.name, reason: "ignored" });
@@ -281,7 +301,7 @@ export async function createPlan(config, now = new Date()) {
         continue;
       }
       const stats = await fs.stat(sourcePath);
-      if (stats.mtimeMs > minimumModifiedTime) {
+      if (config.options.minimumAgeMinutes > 0 && stats.mtimeMs > minimumModifiedTime) {
         skipped.push({ name: entry.name, reason: "recent" });
         continue;
       }
@@ -299,6 +319,7 @@ export async function createPlan(config, now = new Date()) {
         size: await directorySize(sourcePath),
         snapshotSize: stats.size,
         mtimeMs: stats.mtimeMs,
+        fingerprint: await directoryFingerprint(sourcePath),
       });
       continue;
     }
@@ -307,11 +328,13 @@ export async function createPlan(config, now = new Date()) {
       skipped.push({ name: entry.name, reason: "unsupported" });
       continue;
     }
-    const extension = path.extname(entry.name).toLowerCase();
+    const lowerName = entry.name.toLowerCase();
+    const extension = [...config.categoryByExtension.keys()].sort((a, b) => b.length - a.length)
+      .find((extension) => lowerName.endsWith(extension)) ?? path.extname(entry.name).toLowerCase();
     const category = config.categoryByExtension.get(extension)
       ?? (config.options.includeUnknown ? config.options.unknownCategory : null);
     const allowedInstaller = config.options.allowInstallerFiles && INSTALLER_EXTENSIONS.has(extension) && category;
-    if (PROTECTED_EXTENSIONS.has(extension) && !allowedInstaller) {
+    if (PROTECTED_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) && !allowedInstaller) {
       skipped.push({ name: entry.name, reason: "protected" });
       continue;
     }
@@ -321,7 +344,7 @@ export async function createPlan(config, now = new Date()) {
     }
 
     const stats = await fs.stat(sourcePath);
-    if (stats.mtimeMs > minimumModifiedTime) {
+    if (config.options.minimumAgeMinutes > 0 && stats.mtimeMs > minimumModifiedTime) {
       skipped.push({ name: entry.name, reason: "recent" });
       continue;
     }
@@ -341,6 +364,9 @@ export async function createPlan(config, now = new Date()) {
       snapshotSize: stats.size,
       mtimeMs: stats.mtimeMs,
     });
+    } catch (error) {
+      skipped.push({ name: entry.name, reason: error.code === "ENOENT" ? "missing" : "unreadable", detail: error.message });
+    }
   }
 
   return {
@@ -403,87 +429,57 @@ function batchId(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, "-");
 }
 
-async function moveFileSafely(source, target) {
-  try {
-    await fs.link(source, target);
-    try {
-      await fs.unlink(source);
-    } catch (unlinkError) {
-      await fs.unlink(target).catch(() => {});
-      throw unlinkError;
-    }
-  } catch (error) {
-    if (!["EXDEV", "EPERM", "ENOTSUP", "EOPNOTSUPP"].includes(error?.code)) throw error;
-    const stats = await fs.stat(source);
-    await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
-    try {
-      await fs.utimes(target, stats.atime, stats.mtime);
-      await fs.unlink(source);
-    } catch (unlinkError) {
-      await fs.unlink(target).catch(() => {});
-      throw unlinkError;
-    }
-  }
-}
-
-async function moveEntrySafely(source, target, type = "file") {
-  if (type !== "directory") return moveFileSafely(source, target);
-  try {
-    await fs.rename(source, target);
-  } catch (error) {
-    if (error?.code === "EXDEV") throw new Error(`Cannot move application folder across drives: ${source}`);
-    throw error;
-  }
-}
+const moveEntrySafely = safeMove;
 
 export async function applyPlan(plan, config, now = new Date()) {
+  return withOperationLock(config, () => applyPlanLocked(plan, config, now));
+}
+
+async function applyPlanLocked(plan, config, now) {
   const directory = historyRoot(config);
-  const metadataDirectory = path.dirname(directory);
-  const lockFile = path.join(metadataDirectory, "apply.lock");
   await fs.mkdir(directory, { recursive: true });
-  try {
-    await fs.writeFile(lockFile, `${JSON.stringify({ pid: process.pid, startedAt: now.toISOString() })}\n`, { flag: "wx" });
-  } catch (error) {
-    if (error?.code === "EEXIST") throw new Error(`Another apply may be running. If it is not, remove the stale lock: ${lockFile}`);
-    throw error;
-  }
 
   const completed = [];
   const changed = [];
   const operations = [];
   const reserved = new Set();
   const record = {
-    version: 1, id: batchId(now), status: "applying", appliedAt: now.toISOString(),
+    version: 2, id: `${batchId(now)}-${crypto.randomUUID().slice(0, 8)}`, status: "applying", appliedAt: now.toISOString(),
     source: config.source, destination: config.destination,
     allowedDestinations: [...config.destinationByCategory.values()], operations, moves: completed, notMoved: changed,
   };
   const recordFile = path.join(directory, `${record.id}.json`);
-  const writeRecord = () => fs.writeFile(recordFile, `${JSON.stringify(record, null, 2)}\n`);
+  const writeRecord = () => atomicJson(recordFile, record);
 
   try {
     for (const item of plan.planned) {
+      if (path.dirname(item.source) !== config.source || ![...config.destinationByCategory.values()].some(directory => isWithin(directory, item.target))) throw new Error("Unsafe plan path.");
       let current;
       try {
-        current = await fs.stat(item.source);
+        await assertNoLinks(item.source);
+        await assertNoLinks(item.target);
+        current = await fs.lstat(item.source);
       } catch (error) {
         changed.push({ name: item.name, reason: error?.code === "ENOENT" ? "missing" : "unreadable" });
         continue;
       }
       const expectedType = item.type ?? "file";
       const typeMatches = expectedType === "directory" ? current.isDirectory() : current.isFile();
-      if (!typeMatches || current.size !== (item.snapshotSize ?? item.size) || current.mtimeMs !== item.mtimeMs) {
+      if (!typeMatches || current.size !== (item.snapshotSize ?? item.size) || current.mtimeMs !== item.mtimeMs
+        || (item.fingerprint && await directoryFingerprint(item.source).catch(() => null) !== item.fingerprint)) {
         changed.push({ name: item.name, reason: "changed since preview" });
         continue;
       }
       const finalTarget = await unusedTarget(item.target, reserved);
-      operations.push({ from: item.source, to: finalTarget, type: expectedType, size: item.size, snapshotSize: item.snapshotSize ?? item.size, mtimeMs: item.mtimeMs });
+      operations.push({ from: item.source, to: finalTarget, type: expectedType, size: item.size, snapshotSize: item.snapshotSize ?? item.size, mtimeMs: item.mtimeMs, fingerprint: item.fingerprint });
     }
 
     await fs.writeFile(recordFile, `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" });
     for (const operation of operations) {
-      const current = await fs.stat(operation.from).catch(() => null);
+      const current = await fs.lstat(operation.from).catch(() => null);
       const typeMatches = operation.type === "directory" ? current?.isDirectory() : current?.isFile();
-      if (!current || !typeMatches || current.size !== operation.snapshotSize || current.mtimeMs !== operation.mtimeMs) {
+      if (!current || !typeMatches || current.size !== operation.snapshotSize || current.mtimeMs !== operation.mtimeMs
+        || (operation.fingerprint && await directoryFingerprint(operation.from).catch(() => null) !== operation.fingerprint)) {
         changed.push({ name: path.basename(operation.from), reason: "changed during apply" });
         continue;
       }
@@ -497,12 +493,15 @@ export async function applyPlan(plan, config, now = new Date()) {
         await moveEntrySafely(operation.from, operation.to, operation.type);
       }
       completed.push({ ...operation });
+      await writeRecord();
     }
     record.status = completed.length ? "applied" : "empty";
     await writeRecord();
     return record;
-  } finally {
-    await fs.unlink(lockFile).catch(() => {});
+  } catch (error) {
+    record.error = error.message;
+    await writeRecord();
+    throw error;
   }
 }
 
@@ -528,6 +527,10 @@ async function historyRecords(config) {
 }
 
 export async function undoLatest(config, now = new Date()) {
+  return withOperationLock(config, () => undoLatestLocked(config, now));
+}
+
+async function undoLatestLocked(config, now) {
   const candidate = (await historyRecords(config)).find(({ record }) => ["applied", "applying", "partially-undone"].includes(record.status));
   if (!candidate) return null;
   const { record, file } = candidate;
@@ -535,16 +538,21 @@ export async function undoLatest(config, now = new Date()) {
     throw new Error("Latest history entry belongs to different source or destination folders.");
   }
 
-  const restored = [];
+  const restored = record.restored ?? [];
   const skipped = [];
   const reserved = new Set();
-  const movesToInspect = record.status === "applying" ? record.operations : record.moves;
+  if (record.status === "applying") record.recoveryOperations = record.operations;
+  const movesToInspect = record.recoveryOperations ?? record.moves;
+  if (record.undoPending && !(await pathExists(record.undoPending.from)) && await pathExists(record.undoPending.to)) {
+    if (!restored.some(item => item.from === record.undoPending.from)) restored.push(record.undoPending);
+  }
   for (const move of [...movesToInspect].reverse()) {
+    if (restored.some(item => item.from === move.to)) continue;
     const from = path.resolve(move.from);
     const to = path.resolve(move.to);
     const allowedDestinations = record.allowedDestinations ?? [record.destination];
     const destinationIsSafe = allowedDestinations.some((directory) => isWithin(path.resolve(directory), to));
-    if (!(from === config.source || isWithin(config.source, from)) || !destinationIsSafe) {
+    if (path.dirname(from) !== config.source || !destinationIsSafe) {
       skipped.push({ name: path.basename(to), reason: "unsafe history path" });
       continue;
     }
@@ -560,16 +568,28 @@ export async function undoLatest(config, now = new Date()) {
       continue;
     }
     const restoreTarget = await unusedTarget(from, reserved, "restored");
-    await fs.mkdir(path.dirname(restoreTarget), { recursive: true });
-    await moveEntrySafely(to, restoreTarget, move.type);
+    try {
+      await assertNoLinks(restoreTarget);
+      await assertNoLinks(to);
+      await fs.mkdir(path.dirname(restoreTarget), { recursive: true });
+      record.undoPending = { from: to, to: restoreTarget, type: move.type ?? "file", size: move.size };
+      await atomicJson(file, record);
+      await moveEntrySafely(to, restoreTarget, move.type);
+    } catch (error) {
+      skipped.push({ name: path.basename(to), reason: error.message });
+      continue;
+    }
     restored.push({ from: to, to: restoreTarget, type: move.type ?? "file", size: move.size });
+    record.restored = restored;
+    delete record.undoPending;
+    await atomicJson(file, record);
   }
 
   record.status = skipped.length ? "partially-undone" : "undone";
   record.undoneAt = now.toISOString();
   record.restored = restored;
   record.undoSkipped = skipped;
-  await fs.writeFile(file, `${JSON.stringify(record, null, 2)}\n`);
+  await atomicJson(file, record);
   return record;
 }
 
@@ -604,6 +624,13 @@ export async function diagnose(config) {
     if (config.source === config.destination || isWithin(config.source, config.destination)) throw new Error("destination is inside source");
   });
   await check("Every extension has one category", async () => {});
+  await check("History files are readable", async () => {
+    const names = await fs.readdir(historyRoot(config)).catch(error => { if (error.code === "ENOENT") return []; throw error; });
+    for (const name of names.filter(name => name.endsWith(".json"))) JSON.parse(await fs.readFile(path.join(historyRoot(config), name), "utf8"));
+  });
+  await check("Paths do not traverse links", async () => {
+    for (const directory of [config.source, config.stateDirectory, ...config.destinationByCategory.values()]) await assertNoLinks(directory);
+  });
   await check("No other apply is holding the lock", async () => {
     const lockFile = path.join(path.dirname(historyRoot(config)), "apply.lock");
     if (await pathExists(lockFile)) throw new Error(`lock exists at ${lockFile}`);
@@ -618,6 +645,10 @@ export async function listHistory(config, limit = 10) {
     appliedAt: record.appliedAt,
     items: record.moves?.length ?? 0,
     bytes: (record.moves ?? []).reduce((sum, move) => sum + (move.size ?? 0), 0),
+    notMoved: record.notMoved ?? [],
+    error: record.error ?? null,
+    moves: (record.moves ?? []).map(move => ({ from: move.from, to: move.to })),
+    undoSkipped: record.undoSkipped ?? [],
   }));
 }
 

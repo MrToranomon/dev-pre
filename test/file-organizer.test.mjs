@@ -213,7 +213,7 @@ test("an apply lock prevents two organizers from moving the same inbox", async (
   await fs.mkdir(metadata, { recursive: true });
   await fs.writeFile(path.join(metadata, "apply.lock"), "already running");
 
-  await assert.rejects(applyPlan(plan, item.config), /Another apply may be running/);
+  await assert.rejects(applyPlan(plan, item.config), /Another operation may be running/);
   assert.equal(await fs.readFile(path.join(item.source, "notes.txt"), "utf8"), "data");
 });
 

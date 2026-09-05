@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import crypto from "node:crypto";
+import { assertSafeName, assertNoLinks, atomicJson, withOperationLock, moveEntrySafely, within as isWithin } from "./safety.mjs";
 
 import { applyPlan, createPlan, loadConfig } from "./file-organizer.mjs";
 import { findFolderRuleConflicts, orderFolderRules, prioritizeFolderRule } from "./folder-rules.mjs";
@@ -8,6 +10,7 @@ import { findFolderRuleConflicts, orderFolderRules, prioritizeFolderRule } from 
 function safeName(value, label = "Name") {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${label} is required.`);
   const name = value.trim();
+  assertSafeName(name, label);
   if (name === "." || name === ".." || path.isAbsolute(name) || /[\\/:*?"<>|]/.test(name)) {
     throw new Error(`${label} must be one safe folder name.`);
   }
@@ -39,8 +42,7 @@ async function exists(target) {
 }
 
 function within(parent, child) {
-  const relative = path.relative(parent, child);
-  return relative && !relative.startsWith("..") && !path.isAbsolute(relative);
+  return isWithin(parent, child);
 }
 
 async function uniqueTarget(target, reserved = new Set(), label = null) {
@@ -61,7 +63,7 @@ export async function readConfigDocument(configPath) {
 }
 
 async function validateConfigDocument(configPath, document) {
-  const temporary = `${configPath}.${process.pid}.validate.tmp`;
+  const temporary = `${configPath}.${crypto.randomUUID()}.validate.tmp`;
   const contents = `${JSON.stringify(document, null, 2)}\n`;
   await fs.writeFile(temporary, contents, { flag: "wx" });
   try {
@@ -73,13 +75,14 @@ async function validateConfigDocument(configPath, document) {
 
 async function saveConfigDocument(configPath, document) {
   await validateConfigDocument(configPath, document);
-  const contents = `${JSON.stringify(document, null, 2)}\n`;
-  await fs.writeFile(configPath, contents);
+  const previous = await readConfigDocument(configPath);
+  await atomicJson(`${configPath}.backup.json`, previous);
+  await atomicJson(configPath, document);
   return loadConfig(configPath);
 }
 
 export function categoryNames(document) {
-  return [...new Set([...Object.keys(document.categories ?? {}), ...Object.keys(document.folderCategories ?? {})])];
+  return [...new Set([...Object.keys(document.categories ?? {}), ...Object.keys(document.folderCategories ?? {}), ...(document.options?.includeUnknown ? [document.options.unknownCategory ?? "Other"] : [])])];
 }
 
 function syncFolderRuleOrder(document) {
@@ -93,6 +96,7 @@ export async function inventory(config, document) {
   const result = {};
   for (const category of categoryNames(document)) {
     const directory = config.destinationByCategory.get(category);
+    await assertNoLinks(directory);
     let entries = [];
     try {
       entries = await fs.readdir(directory, { withFileTypes: true });
@@ -142,54 +146,18 @@ async function operationRecords(config) {
 }
 
 async function withManagerLock(config, action) {
-  await fs.mkdir(config.stateDirectory, { recursive: true });
-  const lock = path.join(config.stateDirectory, "manager.lock");
-  try {
-    await fs.writeFile(lock, `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`, { flag: "wx" });
-  } catch (error) {
-    if (error?.code === "EEXIST") throw new Error("Another reassignment is already running.");
-    throw error;
-  }
-  try {
-    return await action();
-  } finally {
-    await fs.unlink(lock).catch(() => {});
-  }
+  return withOperationLock(config, action);
 }
 
 async function movePath(source, target, type) {
-  try {
-    await fs.rename(source, target);
-    return;
-  } catch (error) {
-    if (error?.code !== "EXDEV") throw error;
-  }
-
-  if (type === "folder") {
-    await fs.cp(source, target, { recursive: true, force: false, errorOnExist: true, preserveTimestamps: true });
-    try {
-      await fs.rm(source, { recursive: true });
-    } catch (error) {
-      await fs.rm(target, { recursive: true, force: true }).catch(() => {});
-      throw error;
-    }
-    return;
-  }
-
-  const stats = await fs.stat(source);
-  await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
-  try {
-    await fs.utimes(target, stats.atime, stats.mtime);
-    await fs.unlink(source);
-  } catch (error) {
-    await fs.unlink(target).catch(() => {});
-    throw error;
-  }
+  return moveEntrySafely(source, target, type);
 }
 
 async function moveBetweenDirectories(config, fromDirectory, toDirectory, names, metadata) {
   if (!Array.isArray(names) || names.length === 0) throw new Error("Select at least one item.");
   return withManagerLock(config, async () => {
+    await assertNoLinks(fromDirectory);
+    await assertNoLinks(toDirectory);
     const operations = [];
     const reserved = new Set();
     for (const rawName of [...new Set(names)]) {
@@ -204,25 +172,30 @@ async function moveBetweenDirectories(config, fromDirectory, toDirectory, names,
 
     const directory = operationDirectory(config);
     await fs.mkdir(directory, { recursive: true });
-    const id = new Date().toISOString().replace(/[:.]/g, "-");
-    const record = { id, status: "applying", createdAt: new Date().toISOString(), ...metadata, operations, completed: [] };
+    const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}`;
+    const record = { id, status: "applying", createdAt: new Date().toISOString(), fromDirectory, toDirectory, ...metadata, operations, completed: [] };
     const historyFile = path.join(directory, `${id}.json`);
-    const writeHistory = () => fs.writeFile(historyFile, `${JSON.stringify(record, null, 2)}\n`);
+    const writeHistory = () => atomicJson(historyFile, record);
     await fs.writeFile(historyFile, `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" });
     try {
       await fs.mkdir(toDirectory, { recursive: true });
       for (const operation of operations) {
         await movePath(operation.from, operation.to, operation.type);
         record.completed.push(operation);
+        await writeHistory();
       }
       record.status = "applied";
       await writeHistory();
       return record;
     } catch (error) {
+      record.rollbackFailed = [];
       for (const operation of [...record.completed].reverse()) {
-        if (await exists(operation.to)) await movePath(operation.to, operation.from, operation.type).catch(() => {});
+        if (await exists(operation.to)) {
+          try { await movePath(operation.to, operation.from, operation.type); }
+          catch (rollbackError) { record.rollbackFailed.push({ ...operation, error: rollbackError.message }); }
+        }
       }
-      record.status = "rolled-back";
+      record.status = record.rollbackFailed.length ? "partially-undone" : "rolled-back";
       record.error = error.message;
       await writeHistory().catch(() => {});
       throw error;
@@ -246,26 +219,46 @@ export async function reassignItems(config, document, fromCategory, toCategory, 
 export async function undoLatestReassignment(config, { recordId = null } = {}) {
   return withManagerLock(config, async () => {
     const candidate = (await operationRecords(config)).find(({ record }) =>
-      record.status === "applied" && (recordId ? record.id === recordId : record.reason === "reassign"));
+      ["applied", "applying", "partially-undone"].includes(record.status) && (recordId ? record.id === recordId : record.reason === "reassign"));
     if (!candidate) return null;
-    const restored = [];
+    const restored = candidate.record.restored ?? [];
+    const skipped = [];
+    const pending = candidate.record.undoPending;
+    if (pending && !(await exists(pending.from)) && await exists(pending.to) && !restored.some(item => item.from === pending.from)) restored.push(pending);
     const reserved = new Set();
-    for (const operation of [...candidate.record.completed].reverse()) {
-      if (!(await exists(operation.to))) continue;
+    for (const operation of [...(candidate.record.rollbackFailed ?? candidate.record.operations ?? candidate.record.completed)].reverse()) {
+      if (restored.some(item => item.from === operation.to)) continue;
+      if (candidate.record.fromDirectory && (path.dirname(operation.from) !== candidate.record.fromDirectory || path.dirname(operation.to) !== candidate.record.toDirectory)) {
+        skipped.push({ name: operation.name, reason: "unsafe history path" }); continue;
+      }
+      if (!(await exists(operation.to))) {
+        if (!(await exists(operation.from))) skipped.push({ name: operation.name, reason: "both paths are missing" });
+        continue;
+      }
+      if (candidate.record.status === "applying" && await exists(operation.from)) { skipped.push({ name: operation.name, reason: "both paths exist" }); continue; }
       const target = await uniqueTarget(operation.from, reserved, "restored");
-      await fs.mkdir(path.dirname(target), { recursive: true });
-      await movePath(operation.to, target, operation.type);
+      try {
+        await assertNoLinks(target);
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        candidate.record.undoPending = { from: operation.to, to: target, type: operation.type, size: operation.size };
+        await atomicJson(candidate.file, candidate.record);
+        await movePath(operation.to, target, operation.type);
+      } catch (error) { skipped.push({ name: operation.name, reason: error.message }); continue; }
       restored.push({ from: operation.to, to: target, type: operation.type, size: operation.size });
+      candidate.record.restored = restored;
+      delete candidate.record.undoPending;
+      await atomicJson(candidate.file, candidate.record);
     }
-    candidate.record.status = "undone";
+    candidate.record.status = skipped.length ? "partially-undone" : "undone";
     candidate.record.undoneAt = new Date().toISOString();
     candidate.record.restored = restored;
-    await fs.writeFile(candidate.file, `${JSON.stringify(candidate.record, null, 2)}\n`);
+    candidate.record.undoSkipped = skipped;
+    await atomicJson(candidate.file, candidate.record);
     return candidate.record;
   });
 }
 
-export async function createCategory(configPath, name) {
+async function createCategoryImpl(configPath, name) {
   const document = await readConfigDocument(configPath);
   const category = safeName(name, "Category name");
   if (categoryNames(document).includes(category)) throw new Error(`Category already exists: ${category}`);
@@ -275,11 +268,12 @@ export async function createCategory(configPath, name) {
   return category;
 }
 
-export async function deleteCategory(configPath, name) {
+async function deleteCategoryImpl(configPath, name) {
   const config = await loadConfig(configPath);
   const document = await readConfigDocument(configPath);
   const category = safeName(name, "Category name");
   if (!categoryNames(document).includes(category)) throw new Error(`Unknown category: ${category}`);
+  if (document.options?.includeUnknown && category === (document.options.unknownCategory ?? "Other")) throw new Error("未分類の保存先は設定で未分類整理を無効にしてから削除してください。");
   const directory = config.destinationByCategory.get(category);
   if (await exists(directory)) {
     const entries = await fs.readdir(directory);
@@ -296,7 +290,7 @@ export async function deleteCategory(configPath, name) {
   await saveConfigDocument(configPath, document);
 }
 
-export async function renameCategory(configPath, oldName, newName) {
+async function renameCategoryImpl(configPath, oldName, newName) {
   const config = await loadConfig(configPath);
   const document = await readConfigDocument(configPath);
   const from = safeName(oldName, "Current category");
@@ -305,6 +299,7 @@ export async function renameCategory(configPath, oldName, newName) {
   if (categoryNames(document).includes(to)) throw new Error(`Category already exists: ${to}`);
 
   const currentItems = (await inventory(config, document))[from];
+  if (document.options?.includeUnknown && from === (document.options.unknownCategory ?? "Other")) document.options.unknownCategory = to;
   document.categories ??= {};
   if (Object.hasOwn(document.categories, from)) {
     document.categories[to] = document.categories[from];
@@ -326,7 +321,8 @@ export async function renameCategory(configPath, oldName, newName) {
   }
 
   let moveRecord = null;
-  if (currentItems.length && !customDestination) {
+  await validateConfigDocument(configPath, document);
+  if (currentItems.length && !customDestination && path.relative(config.destinationByCategory.get(from), path.join(config.destination, to)) !== "") {
     const movementDocument = structuredClone(document);
     movementDocument.categories[from] = [];
     moveRecord = await reassignItems(config, movementDocument, from, to, currentItems.map((item) => item.name), "rename-category");
@@ -334,7 +330,7 @@ export async function renameCategory(configPath, oldName, newName) {
   try {
     await saveConfigDocument(configPath, document);
     const oldDirectory = config.destinationByCategory.get(from);
-    if (await exists(oldDirectory) && (await fs.readdir(oldDirectory)).length === 0) await fs.rmdir(oldDirectory);
+    if (!customDestination && await exists(oldDirectory) && (await fs.readdir(oldDirectory)).length === 0) await fs.rmdir(oldDirectory).catch(() => {});
   } catch (error) {
     if (moveRecord) await undoLatestReassignment(config, { recordId: moveRecord.id }).catch(() => {});
     throw error;
@@ -342,7 +338,7 @@ export async function renameCategory(configPath, oldName, newName) {
   return to;
 }
 
-export async function updateCategoryDestination(configPath, categoryName, requestedPath) {
+async function updateCategoryDestinationImpl(configPath, categoryName, requestedPath) {
   const config = await loadConfig(configPath);
   const document = await readConfigDocument(configPath);
   const category = safeName(categoryName, "Category");
@@ -382,7 +378,7 @@ export async function updateCategoryDestination(configPath, categoryName, reques
   }
   try {
     await saveConfigDocument(configPath, document);
-    if (!currentWasCustom && await exists(currentDirectory) && (await fs.readdir(currentDirectory)).length === 0) await fs.rmdir(currentDirectory);
+    if (!currentWasCustom && await exists(currentDirectory) && (await fs.readdir(currentDirectory)).length === 0) await fs.rmdir(currentDirectory).catch(() => {});
   } catch (error) {
     if (moveRecord) await undoLatestReassignment(config, { recordId: moveRecord.id }).catch(() => {});
     throw error;
@@ -390,7 +386,7 @@ export async function updateCategoryDestination(configPath, categoryName, reques
   return proposedDirectory;
 }
 
-export async function updateRule(configPath, action, categoryName, value) {
+async function updateRuleImpl(configPath, action, categoryName, value) {
   const document = await readConfigDocument(configPath);
   const category = safeName(categoryName, "Category");
   if (!categoryNames(document).includes(category)) throw new Error(`Unknown category: ${category}`);
@@ -427,7 +423,7 @@ export async function updateRule(configPath, action, categoryName, value) {
   return { conflicts: [] };
 }
 
-export async function setFolderRulePriority(configPath, preferredRule, otherRule) {
+async function setFolderRulePriorityImpl(configPath, preferredRule, otherRule) {
   const document = await readConfigDocument(configPath);
   const ordered = orderFolderRules(document.folderCategories ?? {}, document.folderRuleOrder ?? []);
   document.folderRuleOrder = prioritizeFolderRule(ordered, preferredRule, otherRule);
@@ -440,7 +436,7 @@ export async function dashboardState(configPath) {
   const document = await readConfigDocument(configPath);
   const items = await inventory(config, document);
   const plan = await createPlan(config);
-  const latestReassignment = (await operationRecords(config)).find(({ record }) => record.reason === "reassign")?.record ?? null;
+  const latestReassignment = (await operationRecords(config)).find(({ record }) => record.reason === "reassign" && ["applied", "applying", "partially-undone"].includes(record.status))?.record ?? null;
   let destinationFolders = [];
   try {
     destinationFolders = (await fs.readdir(config.destination, { withFileTypes: true }))
@@ -453,6 +449,7 @@ export async function dashboardState(configPath) {
   return {
     destination: config.destination,
     source: config.source,
+    options: config.options,
     categories: categoryNames(document).map((name) => ({
       name,
       path: config.destinationByCategory.get(name),
@@ -462,15 +459,35 @@ export async function dashboardState(configPath) {
       items: items[name] ?? [],
     })),
     waiting: { items: plan.planned.length, bytes: plan.totalBytes, skipped: plan.skipped.length },
-    availableFolders: destinationFolders.filter((name) => !knownCategories.has(name)).sort((a, b) => a.localeCompare(b, "ja", { numeric: true })),
+    availableFolders: destinationFolders.filter((name) => !knownCategories.has(name) && name !== ".file-organizer").sort((a, b) => a.localeCompare(b, "ja", { numeric: true })),
     conflicts: findFolderRuleConflicts(config.folderRules),
     latestReassignment: latestReassignment ? { status: latestReassignment.status, createdAt: latestReassignment.createdAt, count: latestReassignment.completed?.length ?? 0 } : null,
   };
 }
 
-export async function runOrganizer(configPath) {
+async function updateOptionsImpl(configPath, changes) {
+  const document = await readConfigDocument(configPath);
+  const allowed = new Set(["minimumAgeMinutes", "dateFolders", "includeUnknown", "unknownCategory", "allowInstallerFiles", "ignore"]);
+  if (!changes || typeof changes !== "object" || Array.isArray(changes) || Object.keys(changes).some(key => !allowed.has(key))) throw new Error("変更できない設定が含まれています。");
+  document.options = { ...document.options, ...changes };
+  await saveConfigDocument(configPath, document);
+}
+
+async function runOrganizerImpl(configPath) {
   const config = await loadConfig(configPath);
   const plan = await createPlan(config);
   const record = await applyPlan(plan, config);
   return { moved: record.moves.length, skipped: plan.skipped.length, bytes: record.moves.reduce((sum, item) => sum + (item.size ?? 0), 0) };
 }
+
+function lockedConfigAction(action) {
+  return async (configPath, ...args) => withOperationLock(await loadConfig(configPath), () => action(configPath, ...args));
+}
+export const createCategory = lockedConfigAction(createCategoryImpl);
+export const deleteCategory = lockedConfigAction(deleteCategoryImpl);
+export const renameCategory = lockedConfigAction(renameCategoryImpl);
+export const updateCategoryDestination = lockedConfigAction(updateCategoryDestinationImpl);
+export const updateRule = lockedConfigAction(updateRuleImpl);
+export const setFolderRulePriority = lockedConfigAction(setFolderRulePriorityImpl);
+export const updateOptions = lockedConfigAction(updateOptionsImpl);
+export const runOrganizer = lockedConfigAction(runOrganizerImpl);

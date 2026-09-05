@@ -6,6 +6,8 @@ let selectedCategory = null;
 let selectedItems = new Set();
 let dialogResolver = null;
 let toastTimer = null;
+let busy = false;
+history.replaceState(null, "", location.pathname);
 
 const $ = (selector) => document.querySelector(selector);
 const elements = {
@@ -56,7 +58,11 @@ function categoryColor(index) {
 }
 
 function showLoading(visible) {
+  busy = visible;
+  document.querySelector(".app-shell")?.toggleAttribute("inert", visible);
+  document.querySelectorAll("dialog").forEach(dialog => dialog.toggleAttribute("inert", visible));
   elements.loading.classList.toggle("visible", visible);
+  if (!visible && !state) for (const id of ["addCategoryButton", "importFolderButton", "renameButton", "destinationButton", "deleteButton", "addExtensionButton", "addPatternButton", "undoButton", "settingsButton"]) $(`#${id}`).disabled = true;
 }
 
 function toast(message, error = false) {
@@ -68,25 +74,38 @@ function toast(message, error = false) {
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(path, {
+  let response;
+  try { response = await fetch(path, {
     ...options,
     headers: { "Content-Type": "application/json", "X-Orbit-Token": token, ...(options.headers ?? {}) },
-  });
+  }); } catch { throw new Error("アプリに接続できません。起動状態を確認し、更新してください。"); }
   const data = await response.json();
   if (!response.ok) throw new Error(data.error ?? "処理に失敗しました。");
   return data;
 }
 
 async function mutate(path, body, successMessage) {
+  if (busy) return null;
+  document.querySelectorAll("[data-action-error]").forEach(element => element.remove());
   showLoading(true);
   try {
     const data = await request(path, { method: "POST", body: JSON.stringify(body) });
+    $("#errorBanner").hidden = true;
     if (data.state) state = data.state;
     render();
     if (successMessage) toast(successMessage);
     return data;
   } catch (error) {
     toast(error.message, true);
+    $("#errorBanner").hidden = false;
+    $("#errorBanner").textContent = error.message;
+    const dialog = document.querySelector("dialog[open]");
+    if (dialog) {
+      const message = document.createElement("p");
+      message.dataset.actionError = "true"; message.className = "inline-error"; message.setAttribute("role", "alert"); message.textContent = error.message;
+      const actions = dialog.querySelector(".dialog-actions");
+      if (actions) actions.before(message); else dialog.append(message);
+    }
     return null;
   } finally {
     showLoading(false);
@@ -99,8 +118,9 @@ function currentCategory() {
 
 function renderOverview() {
   const managed = state.categories.reduce((total, category) => total + category.items.length, 0);
+  $("#sourceLabel").textContent = `整理元: ${state.source}`;
   $("#waitingCount").textContent = `${state.waiting.items}件`;
-  $("#waitingSize").textContent = state.waiting.items ? `${formatBytes(state.waiting.bytes)} が整理可能` : "Downloadsは整理済み";
+  $("#waitingSize").textContent = state.waiting.items ? `${formatBytes(state.waiting.bytes)} が整理可能 · ${state.waiting.skipped}件を保留` : state.waiting.skipped ? `${state.waiting.skipped}件を保留中 · プレビューで確認` : "整理するアイテムはありません";
   $("#categoryCount").textContent = `${state.categories.length}種類`;
   $("#managedCount").textContent = `${managed}件`;
   $("#destinationLabel").textContent = state.destination;
@@ -109,8 +129,8 @@ function renderOverview() {
   $("#conflictSummary").textContent = conflicts ? "クリックして優先順位を確認" : "競合はありません";
   $("#conflictMetric").classList.toggle("has-conflicts", conflicts > 0);
   const latest = state.latestReassignment;
-  $("#undoButton").disabled = !latest || latest.status !== "applied";
-  $("#organizeButton").disabled = state.waiting.items === 0;
+  $("#undoButton").disabled = !latest;
+  $("#organizeButton").disabled = false;
 }
 
 function conflictCard(conflict, conflictIndex) {
@@ -145,7 +165,7 @@ function renderConflicts() {
 
 function renderCategories() {
   elements.categoryList.innerHTML = state.categories.map((category, index) => `
-    <button class="category-item ${category.name === selectedCategory ? "active" : ""}" type="button" data-category="${encodeURIComponent(category.name)}" style="--dot:${categoryColor(index)}" title="${escapeHtml(category.path)}">
+    <button class="category-item ${category.name === selectedCategory ? "active" : ""}" type="button" data-category="${encodeURIComponent(category.name)}" aria-current="${category.name === selectedCategory ? "true" : "false"}" title="${escapeHtml(category.path)}">
       <i class="category-dot"></i><span>${escapeHtml(category.name)}</span><small>${category.items.length}</small>
     </button>`).join("");
   elements.categoryList.querySelectorAll("[data-category]").forEach((button) => button.addEventListener("click", () => {
@@ -154,6 +174,7 @@ function renderCategories() {
     elements.searchInput.value = "";
     render();
   }));
+  elements.categoryList.querySelectorAll(".category-item").forEach((button, index) => button.style.setProperty("--dot", categoryColor(index)));
 }
 
 function chip(value, action) {
@@ -174,11 +195,16 @@ function renderRules(category) {
 }
 
 function filteredItems(category) {
+  if (!category) return [];
   const term = elements.searchInput.value.trim().toLocaleLowerCase("ja");
-  return term ? category.items.filter((item) => item.name.toLocaleLowerCase("ja").includes(term)) : category.items;
+  const type = $("#typeFilter").value;
+  const sort = $("#sortOrder").value;
+  return category.items.filter(item => (!term || item.name.toLocaleLowerCase("ja").includes(term)) && (type === "all" || item.type === type))
+    .sort((a, b) => (sort === "size" ? (b.size ?? -1) - (a.size ?? -1) : sort === "newest" ? new Date(b.modifiedAt) - new Date(a.modifiedAt) : sort === "oldest" ? new Date(a.modifiedAt) - new Date(b.modifiedAt) : 0) || a.name.localeCompare(b.name, "ja", { numeric: true }));
 }
 
 function renderInventory(category) {
+  if (!category) return;
   const items = filteredItems(category);
   elements.itemCount.textContent = category.items.length;
   elements.inventoryBody.innerHTML = items.map((item) => `
@@ -189,13 +215,17 @@ function renderInventory(category) {
       <td>${formatBytes(item.size)}</td><td>${formatDate(item.modifiedAt)}</td>
     </tr>`).join("");
   elements.emptyState.classList.toggle("visible", items.length === 0);
+  elements.emptyState.querySelector("h3").textContent = category.items.length ? "一致するアイテムはありません" : "ここはまだ空です";
+  elements.emptyState.querySelector("p").textContent = category.items.length ? "検索条件や種類の絞り込みを変更してください。" : "ルールを追加すると、次回の整理から配置されます。";
   elements.inventoryBody.querySelectorAll("[data-item]").forEach((checkbox) => checkbox.addEventListener("change", () => {
     const name = decodeURIComponent(checkbox.dataset.item);
     if (checkbox.checked) selectedItems.add(name); else selectedItems.delete(name);
+    elements.selectAll.checked = items.every(item => selectedItems.has(item.name));
+    elements.selectAll.indeterminate = items.some(item => selectedItems.has(item.name)) && !elements.selectAll.checked;
     renderMoveBar(category);
   }));
   elements.selectAll.checked = items.length > 0 && items.every((item) => selectedItems.has(item.name));
-  elements.selectAll.indeterminate = selectedItems.size > 0 && !elements.selectAll.checked;
+  elements.selectAll.indeterminate = items.some(item => selectedItems.has(item.name)) && !elements.selectAll.checked;
   renderMoveBar(category);
 }
 
@@ -217,7 +247,14 @@ function renderWorkspace() {
   $("#deleteButton").disabled = disabled;
   $("#addExtensionButton").disabled = disabled;
   $("#addPatternButton").disabled = disabled;
-  if (!category) return;
+  if (!category) {
+    elements.categoryTitle.textContent = "配置先を追加しましょう";
+    elements.categoryPath.textContent = "左の＋ボタンから最初の配置先を作成できます。";
+    elements.extensionChips.replaceChildren(); elements.patternChips.replaceChildren(); elements.inventoryBody.replaceChildren();
+    elements.itemCount.textContent = "0"; elements.moveBar.classList.remove("visible"); elements.emptyState.classList.add("visible");
+    elements.selectAll.checked = false; elements.selectAll.indeterminate = false;
+    return;
+  }
   const index = state.categories.indexOf(category);
   elements.categoryTitle.textContent = category.name;
   elements.categoryPath.textContent = `${category.path}${category.customDestination ? "  ·  カスタム保存先" : "  ·  既定"}`;
@@ -228,7 +265,10 @@ function renderWorkspace() {
 
 function render() {
   if (!state) return;
+  for (const id of ["addCategoryButton", "importFolderButton", "settingsButton"]) $(`#${id}`).disabled = false;
   if (!state.categories.some((category) => category.name === selectedCategory)) selectedCategory = state.categories[0]?.name ?? null;
+  const validNames = new Set(currentCategory()?.items.map(item => item.name) ?? []);
+  selectedItems = new Set([...selectedItems].filter(name => validNames.has(name)));
   renderOverview();
   renderConflicts();
   renderCategories();
@@ -370,14 +410,12 @@ $("#moveButton").addEventListener("click", async () => {
 
 $("#undoButton").addEventListener("click", async () => {
   if (!confirm("直近の再割り振りを元に戻しますか？")) return;
-  await mutate("/api/undo-reassignment", {}, "直近の再割り振りを元に戻しました");
+  const data = await mutate("/api/undo-reassignment", {});
+  if (data) toast(`${data.record.restored.length}件を復元しました${data.record.undoSkipped?.length ? ` · ${data.record.undoSkipped.length}件は未復旧` : ""}`);
 });
 
 $("#organizeButton").addEventListener("click", async () => {
-  if (!state.waiting.items) return toast("Downloadsはすでに整理されています。");
-  if (!confirm(`Downloadsの整理待ち${state.waiting.items}件を、現在のルールで配置しますか？`)) return;
-  const data = await mutate("/api/organize", {}, null);
-  if (data) toast(`${data.result.moved}件を整理しました`);
+  await openPreview();
 });
 
 $("#shutdownButton").addEventListener("click", async () => {
@@ -393,6 +431,8 @@ async function start() {
     render();
   } catch (error) {
     toast(error.message, true);
+    $("#errorBanner").hidden = false;
+    $("#errorBanner").textContent = error.message;
   } finally {
     showLoading(false);
   }
