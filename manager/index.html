@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="orbit-token" content="__ORBIT_TOKEN__">
+  <title>Orbit Organizer — 整理と割り振り管理</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="7"></circle><ellipse cx="24" cy="24" rx="20" ry="9" transform="rotate(-22 24 24)"></ellipse><path d="M35 7l1.4 3.6L40 12l-3.6 1.4L35 17l-1.4-3.6L30 12l3.6-1.4z"></path></svg>
+        </div>
+        <div>
+          <p class="eyebrow">ORBIT ORGANIZER</p>
+          <h1>割り振り管理</h1>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span class="connection"><i></i> このPC内だけで動作中</span>
+        <button class="button ghost" id="undoButton" type="button">↶ 再割り振りを戻す</button>
+        <button class="button primary" id="organizeButton" type="button">整理プレビュー</button>
+        <button class="icon-button" id="shutdownButton" type="button" title="管理アプリを終了" aria-label="管理アプリを終了">×</button>
+      </div>
+    </header>
+
+    <div class="utility-bar" aria-label="管理ツール">
+      <p id="sourceLabel">整理元を確認しています</p>
+      <div class="utility-actions">
+        <button class="button ghost small" id="refreshButton" type="button">↻ 更新</button>
+        <button class="button ghost small" id="historyButton" type="button">履歴・Undo</button>
+        <button class="button ghost small" id="settingsButton" type="button">整理設定</button>
+        <button class="button ghost small" id="doctorButton" type="button">診断</button>
+      </div>
+    </div>
+    <div id="errorBanner" class="error-banner" role="alert" hidden></div>
+
+    <section class="overview" aria-label="概要">
+      <article class="metric waiting">
+        <span class="metric-icon">↓</span>
+        <div><span>整理待ち</span><strong id="waitingCount">—</strong><small id="waitingSize">読み込み中</small></div>
+      </article>
+      <article class="metric">
+        <span class="metric-icon">◫</span>
+        <div><span>配置先</span><strong id="categoryCount">—</strong><small>カテゴリ別に保存</small></div>
+      </article>
+      <article class="metric">
+        <span class="metric-icon">✓</span>
+        <div><span>配置済み</span><strong id="managedCount">—</strong><small id="destinationLabel">確認中</small></div>
+      </article>
+      <article class="metric activity" id="conflictMetric" tabindex="0" role="button" aria-label="ルール競合を確認">
+        <span class="metric-icon">⚡</span>
+        <div><span>ルール競合</span><strong id="conflictCount">—</strong><small id="conflictSummary">確認中</small></div>
+      </article>
+    </section>
+
+    <section class="conflict-center panel" id="conflictCenter">
+      <div class="conflict-heading">
+        <div><p class="eyebrow">CONFLICT CENTER</p><h2>ルール競合センター</h2><p>同じフォルダ名に一致するルールを原因ごとに表示しています。上位ルールが次回整理で採用されます。</p></div>
+        <span class="conflict-total" id="conflictTotal"></span>
+      </div>
+      <div class="conflict-list" id="conflictList"></div>
+    </section>
+
+    <main class="content-grid">
+      <aside class="sidebar panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">DESTINATIONS</p><h2>配置先</h2></div>
+          <button class="add-button" id="addCategoryButton" type="button" title="配置先を追加・既存フォルダを登録">＋</button>
+        </div>
+        <nav class="category-list" id="categoryList" aria-label="配置先一覧"></nav>
+        <button class="import-folder" id="importFolderButton" type="button">⊕ 既存フォルダを登録</button>
+        <div class="sidebar-note">
+          <span>⌘</span>
+          <p><strong>ルールは即時保存</strong>変更内容は次回の整理から反映されます。</p>
+        </div>
+      </aside>
+
+      <section class="workspace panel">
+        <div class="workspace-heading">
+          <div class="category-title">
+            <span class="category-orbit" id="categoryOrbit"></span>
+            <div><p class="eyebrow">SELECTED DESTINATION</p><h2 id="categoryTitle">配置先を選択</h2><p id="categoryPath"></p></div>
+          </div>
+          <div class="category-actions">
+            <button class="button ghost" id="destinationButton" type="button">保存先を変更</button>
+            <button class="button ghost" id="renameButton" type="button">名前を変更</button>
+            <button class="button danger-ghost" id="deleteButton" type="button">削除</button>
+          </div>
+        </div>
+
+        <section class="rules-section">
+          <div class="section-title"><div><h3>自動割り振りルール</h3><p>一致したファイルやフォルダがこの配置先へ入ります。</p></div></div>
+          <div class="rule-grid">
+            <div class="rule-box">
+              <div class="rule-label"><span>拡張子</span><button id="addExtensionButton" type="button">＋ 追加</button></div>
+              <div class="chips" id="extensionChips"></div>
+            </div>
+            <div class="rule-box">
+              <div class="rule-label"><span>フォルダ名パターン</span><button id="addPatternButton" type="button">＋ 追加</button></div>
+              <div class="chips" id="patternChips"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="inventory-section">
+          <div class="section-title inventory-title">
+            <div><h3>配置済みアイテム <span class="count-badge" id="itemCount">0</span></h3><p>選択したものを別の配置先へ移動できます。</p></div>
+            <div class="inventory-tools">
+              <label class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="名前で絞り込み（Ctrl+K）" aria-label="配置済みアイテムを検索"></label>
+              <select id="typeFilter" aria-label="種類で絞り込み"><option value="all">すべての種類</option><option value="file">ファイル</option><option value="folder">フォルダ</option></select>
+              <select id="sortOrder" aria-label="並び順"><option value="name">名前順</option><option value="newest">更新が新しい順</option><option value="oldest">更新が古い順</option><option value="size">サイズが大きい順</option></select>
+            </div>
+          </div>
+          <div class="move-bar" id="moveBar">
+            <strong><span id="selectedCount">0</span>件を選択中</strong>
+            <span class="move-arrow">→</span>
+            <select id="moveDestination" aria-label="移動先"></select>
+            <button class="button primary small" id="moveButton" type="button">再割り振り</button>
+            <button class="button text small" id="clearSelectionButton" type="button">選択解除</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th class="check-cell"><input id="selectAll" type="checkbox" aria-label="すべて選択"></th><th>名前</th><th>種類</th><th>サイズ</th><th>更新日</th></tr></thead>
+              <tbody id="inventoryBody"></tbody>
+            </table>
+            <div class="empty-state" id="emptyState"><div>✦</div><h3>ここはまだ空です</h3><p>拡張子やフォルダ名のルールを追加すると、次回から自動で配置されます。</p></div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="textDialog" aria-labelledby="dialogTitle">
+    <form id="textDialogForm">
+      <button class="dialog-close" id="dialogClose" type="button" aria-label="閉じる">×</button>
+      <p class="eyebrow" id="dialogEyebrow">NEW</p>
+      <h2 id="dialogTitle">配置先を追加</h2>
+      <p id="dialogDescription">新しい名前を入力してください。</p>
+      <label><span id="dialogLabel">名前</span><div class="input-row"><input id="dialogInput" autocomplete="off" required><button class="button ghost browse-button" id="dialogBrowse" type="button">参照...</button></div><datalist id="folderSuggestions"></datalist></label>
+      <div class="dialog-actions"><button class="button ghost" id="dialogCancel" type="button">キャンセル</button><button class="button primary" id="dialogConfirm" type="submit">保存</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="previewDialog" class="wide-dialog" aria-labelledby="previewTitle">
+    <div class="dialog-body">
+      <button class="dialog-close" data-close="previewDialog" type="button" aria-label="閉じる">×</button>
+      <p class="eyebrow">YOUR NEXT FLIGHT</p><h2 id="previewTitle">移動する前に、ひと目で確認。</h2>
+      <p id="previewSummary"></p>
+      <div class="preview-toolbar"><label><input type="checkbox" id="previewSelectAll"> 表示中を選択</label><input id="previewSearch" type="search" placeholder="ファイル名・配置先で検索" aria-label="プレビューを検索"><button class="button ghost small" id="exportPreviewButton" type="button">CSVを書き出す</button></div>
+      <div class="preview-list" id="previewList"></div>
+      <details id="skippedDetails"><summary id="skippedSummary">保留中</summary><div id="skippedList" class="detail-list"></div></details>
+      <p class="hint">この確認内容は10分間有効です。実行前に更新されたファイルは保留されます。同名があれば連番を付けます。</p>
+      <div class="dialog-actions"><button class="button ghost" data-close="previewDialog" type="button">キャンセル</button><button class="button primary" id="applyPreviewButton" type="button">選択したものを整理</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="historyDialog" class="wide-dialog" aria-labelledby="historyTitle"><div class="dialog-body">
+    <button class="dialog-close" data-close="historyDialog" type="button" aria-label="閉じる">×</button>
+    <p class="eyebrow">FLIGHT LOG</p><h2 id="historyTitle">整理履歴</h2><p>直近50回を表示します。Undoは取り消していない直近の整理を戻します。</p>
+    <div id="historyList" class="history-list"></div>
+    <div class="dialog-actions"><button class="button ghost" data-close="historyDialog" type="button">閉じる</button><button class="button primary" id="undoOrganizeButton" type="button">↶ 直近の整理を戻す</button></div>
+  </div></dialog>
+
+  <dialog id="settingsDialog" class="wide-dialog" aria-labelledby="settingsTitle"><form id="settingsForm" class="dialog-body">
+    <button class="dialog-close" data-close="settingsDialog" type="button" aria-label="閉じる">×</button>
+    <p class="eyebrow">MAKE IT YOURS</p><h2 id="settingsTitle">整理設定</h2><p>保存した設定は次回の整理から反映されます。変更前の設定は自動バックアップされます。</p>
+    <div class="settings-grid">
+      <label><span>更新後の待機時間（分）</span><input id="minimumAge" type="number" min="0" max="525600" step="0.1" required></label>
+      <label><span>更新日でフォルダ分け</span><select id="dateFolders"><option value="none">分けない</option><option value="year">年ごと（2026）</option><option value="month">月ごと（2026-09）</option></select></label>
+      <label class="check-label"><input id="includeUnknown" type="checkbox"> 未登録の拡張子も整理する</label>
+      <label><span>未分類の配置先名</span><input id="unknownCategory" required maxlength="100"></label>
+      <label class="check-label"><input id="allowInstallers" type="checkbox"> インストーラーの整理を許可する</label>
+      <label class="full-width"><span>除外パターン（1行に1つ・* と ? が使えます）</span><textarea id="ignorePatterns" rows="5" spellcheck="false"></textarea></label>
+    </div>
+    <p class="hint">年・月のフォルダは配置済み一覧ではフォルダ単位で管理します。別ドライブへのフォルダ移動は保留されます。</p>
+    <p id="settingsError" class="inline-error" role="alert"></p>
+    <div class="dialog-actions"><button class="button ghost" id="exportConfigButton" type="button">設定を書き出す</button><button class="button ghost" data-close="settingsDialog" type="button">キャンセル</button><button class="button primary" type="submit">保存する</button></div>
+  </form></dialog>
+
+  <dialog id="doctorDialog" class="wide-dialog" aria-labelledby="doctorTitle"><div class="dialog-body">
+    <button class="dialog-close" data-close="doctorDialog" type="button" aria-label="閉じる">×</button>
+    <p class="eyebrow">SYSTEM CHECK</p><h2 id="doctorTitle">アプリの診断</h2><p>保存先・アクセス権・履歴・実行ロックの状態を確認します。</p><div id="doctorList" class="detail-list"></div>
+    <div class="dialog-actions"><button class="button primary" data-close="doctorDialog" type="button">閉じる</button></div>
+  </div></dialog>
+
+  <dialog id="conflictDialog" class="conflict-dialog">
+    <div class="conflict-dialog-body">
+      <button class="dialog-close" id="conflictDialogClose" type="button" aria-label="閉じる">×</button>
+      <p class="eyebrow">RULE CONFLICT DETECTED</p>
+      <h2>競合するルールを検知しました</h2>
+      <p>同じフォルダ名が複数の配置先に一致します。優先するルールを選んでください。後からホームでも変更できます。</p>
+      <div class="conflict-list modal-list" id="newConflictList"></div>
+      <div class="dialog-actions"><button class="button primary" id="conflictDialogDone" type="button">設定を確認して閉じる</button></div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="loading" id="loading" role="status" aria-live="polite"><div class="spinner"></div><span>安全に処理しています...</span></div>
+  <script src="/app.js"></script>
+  <script src="/enhancements.js"></script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+{
+  "source": "%USERPROFILE%\\Downloads",
+  "destination": "%USERPROFILE%\\Documents",
+  "categories": {
+    "PDF": [],
+    "画像": [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".gif",
+      ".webp",
+      ".heic",
+      ".svg"
+    ],
+    "文書": [
+      ".docx",
+      ".doc",
+      ".pptx",
+      ".ppt",
+      ".txt",
+      ".md"
+    ],
+    "アーカイブ": [
+      ".zip",
+      ".7z",
+      ".rar"
+    ],
+    "メディア": [
+      ".mp3",
+      ".wav",
+      ".m4a",
+      ".flac",
+      ".mp4",
+      ".mov",
+      ".mkv",
+      ".webm"
+    ],
+    "電子書籍": [
+      ".epub",
+      ".mobi"
+    ],
+    "デザイン": [
+      ".psd",
+      ".ai",
+      ".fig",
+      ".sketch"
+    ],
+    "アプリ": [
+      ".winmd"
+    ],
+    "インストーラー": [
+      ".exe",
+      ".msi",
+      ".msix",
+      ".appx",
+      ".appxbundle",
+      ".msixbundle",
+      ".iso",
+      ".dmg",
+      ".pkg",
+      ".deb",
+      ".rpm"
+    ],
+    "転職": []
+  },
+  "folderCategories": {
+    "アプリ": [
+      "clibor",
+      "Office_Tool*"
+    ],
+    "転職": [
+      "転職",
+      "履歴書",
+      "職務経歴書",
+      "志望動機",
+      "面接"
+    ]
+  },
+  "options": {
+    "minimumAgeMinutes": 1,
+    "dateFolders": "none",
+    "includeUnknown": false,
+    "allowInstallerFiles": true,
+    "unknownCategory": "Other",
+    "maxPreviewItems": 40,
+    "stateDirectory": "%LOCALAPPDATA%\\Orbit Organizer",
+    "ignore": [
+      "desktop.ini",
+      "thumbs.db",
+      ".DS_Store",
+      "~$*",
+      "*.crdownload",
+      "*.download",
+      "*.part",
+      "*.partial",
+      "*.tmp"
+    ]
+  },
+  "categoryDestinations": {
+    "画像": "C:\\Users\\v0v15\\Pictures\\その他画像"
+  },
+  "folderRuleOrder": [
+    {
+      "category": "アプリ",
+      "pattern": "clibor"
+    },
+    {
+      "category": "転職",
+      "pattern": "職務経歴書"
+    },
+    {
+      "category": "転職",
+      "pattern": "志望動機"
+    },
+    {
+      "category": "転職",
+      "pattern": "履歴書"
+    },
+    {
+      "category": "転職",
+      "pattern": "転職"
+    },
+    {
+      "category": "転職",
+      "pattern": "面接"
+    },
+    {
+      "category": "アプリ",
+      "pattern": "Office_Tool*"
+    }
+  ]
+}

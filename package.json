@@ -1,0 +1,17 @@
+{
+  "name": "file-organizer",
+  "version": "3.0.0",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "description": "A beautiful, reversible, zero-dependency organizer for your Downloads folder.",
+  "scripts": {
+    "preview": "node organize.mjs preview",
+    "apply": "node organize.mjs apply",
+    "undo": "node organize.mjs undo",
+    "history": "node organize.mjs history",
+    "manage": "node manage.mjs",
+    "demo": "node scripts/demo.mjs",
+    "doctor": "node organize.mjs doctor",
+    "test": "node --test"
+  }
+}

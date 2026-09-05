@@ -1,0 +1,4 @@
+config.json.backup.json
+*.validate.tmp
+*.json.*.tmp
+node_modules/
