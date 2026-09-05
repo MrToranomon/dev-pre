@@ -1,10 +1,15 @@
 {
-  "name": "file-organizer",
-  "version": "3.0.0",
+  "name": "perfectwork",
+  "version": "1.0.0",
   "private": true,
-  "engines": { "node": ">=22" },
-  "description": "A beautiful, reversible, zero-dependency organizer for your Downloads folder.",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "description": "A local-first personal work OS for focus, knowledge, projects, automation and file health.",
   "scripts": {
+    "start": "node work.mjs",
+    "work": "node work.mjs",
+    "work:demo": "node scripts/perfectwork-demo.mjs",
     "preview": "node organize.mjs preview",
     "apply": "node organize.mjs apply",
     "undo": "node organize.mjs undo",
@@ -13,5 +18,9 @@
     "demo": "node scripts/demo.mjs",
     "doctor": "node organize.mjs doctor",
     "test": "node --test"
+  },
+  "dependencies": {
+    "mammoth": "^1.12.2",
+    "pdfjs-dist": "^6.3.289"
   }
 }

@@ -1,0 +1,24 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { WorkspaceStore } from "../src/workspace-store.mjs";
+
+const root = await fs.mkdtemp(path.join(os.tmpdir(), "perfectwork-demo-"));
+const data = path.join(root, "data"), files = path.join(root, "knowledge"), output = path.join(root, "output");
+await fs.mkdir(files); await fs.mkdir(output);
+await fs.writeFile(path.join(files, "vision.md"), "# PerfectWork Vision\n\n仕事、知識、ファイル、進捗をひとつにつなぐ。\n");
+await fs.writeFile(path.join(files, "meeting-notes.txt"), "次のアクション: 検索体験を完成させる。\n担当: チーム\n");
+const store = await new WorkspaceStore(data).init();
+await store.updateSettings({ searchRoots: [files], writeRoot: output, searchMaxFiles: 1000 });
+await store.updateProfile({ name: "Demo", dailyFocus: "世界でいちばん気持ちよく働ける体験をつくる" });
+const project = await store.createProject({ name: "PerfectWork Launch", description: "すべての仕事を一つの流れにつなげる", folder: files, dueDate: new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10), color: "#8b7cff" });
+await store.updateProject(project.id, { progress: 40 });
+await store.createTask({ title: "コマンドセンターを磨く", priority: "high", dueDate: new Date().toISOString().slice(0, 10), projectId: project.id });
+await store.createTask({ title: "検索インデックスを確認", projectId: project.id });
+await store.capture({ title: "検索結果からプレビューできると便利", body: "次の改善候補として検討する", kind: "idea", tags: ["UX", "検索"] });
+await store.addWorklog({ title: "情報設計とデータモデルを完成", body: "インボックスからプロジェクトまで接続", projectId: project.id, minutes: 95 });
+process.stdout.write(`PerfectWorkデモ: ${root}\n`);
+const child = spawn(process.execPath, [path.resolve(import.meta.dirname, "../work.mjs"), "--data-dir", data, ...process.argv.slice(2)], { stdio: "inherit", windowsHide: true, env: { ...process.env, PERFECTWORK_DEFAULT_ROOT: files } });
+child.on("exit", code => { process.exitCode = code ?? 0; });
+child.on("error", error => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
