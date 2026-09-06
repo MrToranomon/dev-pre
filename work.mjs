@@ -27,6 +27,12 @@ import { localDay } from "./src/local-date.mjs";
 import { workspaceTemplates } from "./src/workspace-templates.mjs";
 import { acquireWorkspaceInstance } from "./src/workspace-instance.mjs";
 import { createPostgresRepository } from "./src/postgres-workspace.mjs";
+import {
+  ensureHotkeyConfiguration,
+  hotkeyStatus,
+  normalizeHotkey,
+  updateHotkeyConfiguration,
+} from "./src/hotkey-config.mjs";
 
 const root = import.meta.dirname;
 const dataIndex = process.argv.indexOf("--data-dir");
@@ -36,6 +42,8 @@ const dataDirectory =
   dataIndex === -1
     ? workspaceDataDirectory()
     : path.resolve(process.argv[dataIndex + 1]);
+const hotkeyLauncher = path.join(root, "launch-perfectwork.vbs");
+await ensureHotkeyConfiguration(dataDirectory, hotkeyLauncher);
 const instance = await acquireWorkspaceInstance(dataDirectory);
 if (instance.existing) {
   if (instance.url) {
@@ -175,6 +183,7 @@ async function appState() {
   return {
     ...data,
     storage: await store.storageStatus(),
+    hotkey: await hotkeyStatus(dataDirectory, hotkeyLauncher),
     templates: workspaceTemplates,
     insights: productivityInsights(data),
     search: search.status,
@@ -240,8 +249,26 @@ async function api(request, response, url) {
 
   if (route === "/api/profile")
     return mutate(response, () => store.updateProfile(input));
-  if (route === "/api/settings")
-    return mutate(response, () => store.updateSettings(input));
+  if (route === "/api/settings") {
+    if (input.hotkey?.shortcut !== undefined)
+      normalizeHotkey(input.hotkey.shortcut);
+    const result = await store.updateSettings(input);
+    if (input.hotkey)
+      await updateHotkeyConfiguration(
+        dataDirectory,
+        hotkeyLauncher,
+        input.hotkey,
+      );
+    return send(response, 200, { result, state: await appState() });
+  }
+  if (route === "/api/hotkey") {
+    const result = await updateHotkeyConfiguration(
+      dataDirectory,
+      hotkeyLauncher,
+      input,
+    );
+    return send(response, 200, { result, state: await appState() });
+  }
   if (route === "/api/inbox/create")
     return mutate(response, () => store.capture(input), 201);
   if (route === "/api/inbox/update")

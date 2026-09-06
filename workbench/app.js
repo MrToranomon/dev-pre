@@ -773,6 +773,10 @@ function openSettings() {
     state.settings.healthLargeFileBytes / 1024 / 1024,
   );
   form.elements.healthStaleDays.value = state.settings.healthStaleDays;
+  form.elements.launcherHotkey.value = state.hotkey?.shortcut || "Win+Insert";
+  form.elements.hotkeyEnabled.checked = state.hotkey?.enabled !== false;
+  const hotkey = state.hotkey;
+  $("#hotkeySummary").innerHTML = `<span class="storage-mark">⌨</span><div><strong>${escapeHtml(hotkey?.shortcut || "Win+Insert")}</strong><p>${hotkey?.registered ? "グローバル起動キーは待機中です" : hotkey?.enabled ? "常駐ランチャーが停止しています" : "グローバル起動キーは無効です"}</p><small>${hotkey?.error ? escapeHtml(hotkey.error) : "変更は常駐ランチャーへ自動反映されます。"}</small></div>`;
   const storage = state.storage;
   $("#storageSummary").innerHTML =
     storage?.backend === "postgresql"
@@ -801,6 +805,10 @@ $("#settingsForm").addEventListener("submit", async (event) => {
         healthLargeFileBytes:
           Number(form.get("healthLargeFileMB")) * 1024 * 1024,
         healthStaleDays: Number(form.get("healthStaleDays")),
+        hotkey: {
+          shortcut: form.get("launcherHotkey"),
+          enabled: form.get("hotkeyEnabled") === "on",
+        },
       }),
     });
     state = response.state;

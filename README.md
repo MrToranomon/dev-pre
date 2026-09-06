@@ -15,6 +15,12 @@ npm.cmd run work
 
 `launch-perfectwork.vbs` をダブルクリックしても起動できます。サンプルデータだけで試す場合は、実際のDocumentsやDownloadsに触れないデモを使用してください。
 
+Windowsのどの画面からでも起動するグローバルキーは、初回に次を実行すると有効になります。初期値は `Win+Insert` で、以後はPerfectWorkの設定画面から変更・無効化できます。常駐ランチャーはWindowsログイン時に自動起動します。
+
+```powershell
+npm.cmd run setup:hotkey
+```
+
 ```powershell
 npm.cmd run work:demo
 ```
@@ -55,6 +61,7 @@ A5:SQL Mk-2からDBを確認・操作する場合は、Microsoft Store版をイ�
 - **Orbit連携** — 既存のDownloads整理・ルール管理アプリをPerfectWorkから起動
 - **データポータビリティ** — 設定画面からPerfectWorkの全データをJSONで書き出し
 - **PostgreSQL + JSON保護** — 構造化データはトランザクションで保存し、直近100版の履歴と検索用エンティティを保持。復旧用JSONミラーとPostgreSQLバックアップも作成
+- **グローバル起動キー** — 初期値`Win+Insert`。好きなキーへ変更でき、Windowsログイン時からバックグラウンドで待機
 
 ## 安全性とプライバシー
 

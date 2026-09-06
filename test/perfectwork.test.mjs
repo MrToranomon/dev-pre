@@ -127,6 +127,10 @@ test("PerfectWork HTTP API authenticates and persists a complete workflow", asyn
   assert.equal(secondExit, 0); assert.ok(secondOutput.includes(`already open at ${appUrl.href}`));
   for (const asset of ["/app.js", "/styles.css", "/experience.js", "/experience.css", "/icon.svg", "/manifest.webmanifest"]) assert.equal((await fetch(new URL(asset, appUrl))).status, 200);
   assert.equal((await fetch(new URL("/api/state", appUrl), { headers: { ...headers, Origin: "https://example.invalid" } })).status, 403);
+  assert.equal((await call("/api/state")).data.hotkey.shortcut, "Win+Insert");
+  assert.equal((await call("/api/hotkey", { shortcut: "P" })).status, 400);
+  const hotkey = await call("/api/hotkey", { shortcut: "Ctrl+Alt+P", enabled: true });
+  assert.equal(hotkey.data.state.hotkey.shortcut, "Ctrl+Alt+P");
   const inbox = await call("/api/inbox/create", { title: "API capture", body: "linked workflow" });
   assert.equal(inbox.status, 201);
   const task = await call("/api/inbox/convert", { id: inbox.data.result.id, target: "task" });
