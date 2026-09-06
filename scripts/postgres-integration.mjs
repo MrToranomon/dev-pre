@@ -56,8 +56,23 @@ try {
   const status = await storeA.storageStatus();
   assert.equal(status.backend, "postgresql");
   assert.equal(status.entities, 6);
+  const views = await repositoryA.pool.query(
+    `SELECT table_name FROM information_schema.views WHERE table_schema = $1 ORDER BY table_name`,
+    [schema],
+  );
+  assert.deepEqual(
+    views.rows.map((row) => row.table_name),
+    ["v_habits", "v_inbox", "v_projects", "v_tasks", "v_worklogs", "v_workspace"],
+  );
+  const taskView = await repositoryA.pool.query(
+    `SELECT title, project_id FROM "${schema}".v_tasks`,
+  );
+  assert.deepEqual(taskView.rows[0], {
+    title: "Persist transaction",
+    project_id: project.id,
+  });
   process.stdout.write(
-    `PostgreSQL integration passed: revision ${status.revision}, ${status.entities} projected entities, conflict protection verified.\n`,
+    `PostgreSQL integration passed: revision ${status.revision}, ${status.entities} projected entities, A5 views and conflict protection verified.\n`,
   );
 } finally {
   await storeA?.close().catch(() => {});

@@ -1,6 +1,6 @@
 {
   "name": "perfectwork",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -21,6 +21,7 @@
     "test:ui": "node scripts/perfectwork-ui.mjs",
     "test:postgres": "node scripts/postgres-integration.mjs",
     "setup:postgres": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/setup-postgres.ps1",
+    "setup:a5": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/setup-a5.ps1",
     "db:status": "node scripts/postgres-status.mjs"
   },
   "dependencies": {

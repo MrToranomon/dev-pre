@@ -23,6 +23,8 @@ npm.cmd run work:demo
 
 このPCではPostgreSQL 18の`perfectwork`データベースと、最小権限の`perfectwork_app`ロールを使用します。認証情報はWindows DPAPIで暗号化し、現在のWindowsユーザーだけが読める `%LOCALAPPDATA%\PerfectWork` に保存します。ソースコードやワークスペースJSONには書き込みません。
 
+A5:SQL Mk-2からDBを確認・操作する場合は、Microsoft Store版をインストール後に `npm.cmd run setup:a5` を一度実行します。「PerfectWork」接続と、タスク等を読みやすく表示する参照ビューが利用できます。
+
 起動済みなら同じワークスペースを開きます。複数のサーバーが同じデータを上書きすることを防ぎます。旧版からの更新時は旧サーバーを終了してから起動してください。既存データを引き継ぎ、サンプルデータは追加しません。
 
 ## 最初の3分
@@ -80,6 +82,7 @@ npm.cmd test
 npm.cmd run test:ui
 npm.cmd run test:postgres
 npm.cmd run db:status
+npm.cmd run setup:a5
 node --check work.mjs
 node --check workbench/app.js
 node --check workbench/experience.js

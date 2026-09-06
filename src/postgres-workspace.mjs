@@ -6,7 +6,7 @@ import pg from "pg";
 import { exists } from "./safety.mjs";
 
 const { Pool } = pg;
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 async function findPgDump(environment = process.env) {
   const candidates = [environment.PERFECTWORK_PG_DUMP];
@@ -199,6 +199,55 @@ export class PostgresWorkspaceRepository {
       );
       await client.query(
         `CREATE INDEX IF NOT EXISTS entity_payload_idx ON ${this.schema}.entity USING gin(payload jsonb_path_ops)`,
+      );
+      await client.query(
+        `CREATE OR REPLACE VIEW ${this.schema}.v_workspace AS
+         SELECT revision, updated_at,
+           jsonb_array_length(COALESCE(state->'tasks', '[]'::jsonb)) AS task_count,
+           jsonb_array_length(COALESCE(state->'projects', '[]'::jsonb)) AS project_count,
+           jsonb_array_length(COALESCE(state->'inbox', '[]'::jsonb)) AS inbox_count,
+           jsonb_array_length(COALESCE(state->'worklogs', '[]'::jsonb)) AS worklog_count
+         FROM ${this.schema}.workspace_state WHERE id = 1`,
+      );
+      await client.query(
+        `CREATE OR REPLACE VIEW ${this.schema}.v_tasks AS
+         SELECT entity_id AS id, title, status, project_id, due_date, scheduled_date,
+           NULLIF(payload->>'priority', '')::integer AS priority,
+           NULLIF(payload->>'estimateMinutes', '')::integer AS estimate_minutes,
+           payload->>'completedAt' AS completed_at, updated_at, payload
+         FROM ${this.schema}.entity WHERE entity_type = 'task'`,
+      );
+      await client.query(
+        `CREATE OR REPLACE VIEW ${this.schema}.v_projects AS
+         SELECT entity_id AS id, title AS name, status,
+           NULLIF(payload->>'progress', '')::integer AS progress,
+           payload->>'dueDate' AS due_date, payload->>'folder' AS folder,
+           updated_at, payload
+         FROM ${this.schema}.entity WHERE entity_type = 'project'`,
+      );
+      await client.query(
+        `CREATE OR REPLACE VIEW ${this.schema}.v_inbox AS
+         SELECT entity_id AS id, title, body, payload->>'url' AS url,
+           COALESCE(payload->'tags', '[]'::jsonb) AS tags,
+           (payload->>'favorite')::boolean AS favorite,
+           (payload->>'archived')::boolean AS archived, updated_at, payload
+         FROM ${this.schema}.entity WHERE entity_type = 'inbox'`,
+      );
+      await client.query(
+        `CREATE OR REPLACE VIEW ${this.schema}.v_worklogs AS
+         SELECT entity_id AS id, title, project_id,
+           payload->>'date' AS work_date,
+           NULLIF(payload->>'minutes', '')::integer AS minutes,
+           body, updated_at, payload
+         FROM ${this.schema}.entity WHERE entity_type = 'worklog'`,
+      );
+      await client.query(
+        `CREATE OR REPLACE VIEW ${this.schema}.v_habits AS
+         SELECT entity_id AS id, title AS name,
+           (payload->>'archived')::boolean AS archived,
+           COALESCE(payload->'days', '[]'::jsonb) AS completed_days,
+           updated_at, payload
+         FROM ${this.schema}.entity WHERE entity_type = 'habit'`,
       );
       await client.query(
         `INSERT INTO ${this.schema}.schema_version(version) VALUES($1) ON CONFLICT DO NOTHING`,

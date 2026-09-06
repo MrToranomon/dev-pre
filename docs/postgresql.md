@@ -42,3 +42,22 @@ npm.cmd run test:postgres
 ```
 
 DBバックアップはPerfectWorkの「設定・バックアップ」から作成できます。復元はアプリとPostgreSQLの停止・データ確認が必要な管理操作なので、自動実行しません。
+
+## A5:SQL Mk-2
+
+Microsoft Store版のA5:SQL Mk-2をインストール後、次のコマンドで「PerfectWork」接続を登録できます。
+
+```powershell
+npm.cmd run setup:a5
+```
+
+接続情報はA5:SQL Mk-2自身の暗号化ワークスペースへ保存されます。登録前のワークスペースは `%LOCALAPPDATA%\PerfectWork\a5-backups` にコピーします。A5のデータベースツリーから「PerfectWork」を開くと、`perfectwork`スキーマのテーブルに加えて、確認しやすい次のビューを利用できます。
+
+- `v_workspace`: 現在のリビジョンとデータ件数
+- `v_tasks`: タスク
+- `v_projects`: プロジェクト
+- `v_inbox`: メモ・アイデア
+- `v_worklogs`: 作業記録
+- `v_habits`: 習慣
+
+ビューの`payload`列と`workspace_state.state`列はJSONBです。直接更新するとアプリの整合性を壊す可能性があるため、通常の登録・編集はPerfectWorkの画面から行い、A5は調査、集計、SQL学習、バックアップ内容の確認に使用することを推奨します。
