@@ -68,7 +68,7 @@ function renderHome() {
   const projects = state.projects
     .filter((item) => item.status === "active")
     .slice(0, 3);
-  view.innerHTML = `<div class="welcome-line"><div><span class="day-label">${formatDate(today, { month: "long", day: "numeric", weekday: "long" })}</span><h2>${state.profile.name ? `${escapeHtml(state.profile.name)}さん、` : "さあ、"}いい仕事をしよう。</h2><p>やりたいことに、ちゃんと手が届く一日へ。</p></div><span class="local-badge"><i></i> このPCに保存</span></div>
+  view.innerHTML = `<div class="welcome-line"><div><span class="day-label">${formatDate(today, { month: "long", day: "numeric", weekday: "long" })}</span><h2>${state.profile.name ? `${escapeHtml(state.profile.name)}さん、` : "さあ、"}いい仕事をしよう。</h2><p>やりたいことに、ちゃんと手が届く一日へ。</p></div><span class="local-badge" title="${state.storage?.backend === "postgresql" ? "PostgreSQLを正本として保存し、JSONミラーも更新します" : "このPCのJSONファイルに保存します"}"><i></i> ${state.storage?.backend === "postgresql" ? "PostgreSQL + JSON保護" : "このPCに保存"}</span></div>
     <div class="home-hero"><div class="hero-content"><p class="eyebrow">A LITTLE PROGRESS. A BIG POSSIBILITY.</p><h2>${goal ? escapeHtml(goal) : "大きなアイデアを、<br>今日の一歩に。"}</h2><p>${goal ? "今日のいちばん大切なこと。少しずつ、形にしていこう。" : "頭の中を整理して、ひとつ選んで、集中する。<br>あなたの次の挑戦は、ここから始まります。"}</p><div class="hero-actions"><button class="button primary" data-action="${goal ? "focus" : "edit-focus"}">${goal ? "▷ 集中をはじめる" : "＋ 今日の目標を決める"}</button>${goal ? '<button class="button ghost" data-action="edit-focus">目標を編集</button>' : navButton("library", "アイデアから始める ↗", "button ghost")}</div></div><div class="orbit-art" aria-hidden="true"><div class="orbit-ring ring-one"></div><div class="orbit-ring ring-two"></div><div class="orbit-core">✳</div><div class="floating-label label-top">✦ MAKE IT HAPPEN</div><div class="floating-label label-bottom">ひらめき → 一歩 → 成果</div><span class="art-spark spark-one">✧</span><span class="art-spark spark-two">✦</span></div></div>
     <div class="home-metrics"><article><span class="metric-icon violet">☑</span><div><strong>${completed}<small> 件</small></strong><span>今日の完了</span></div></article><article><span class="metric-icon green">◷</span><div><strong>${state.computed.focusToday}<small> 分</small></strong><span>今日の集中</span></div></article><article><span class="metric-icon peach">▦</span><div><strong>${planned.length}<small> 件</small></strong><span>今日の予定・期限</span></div></article><article><span class="metric-icon pink">♧</span><div><strong>${state.insights.streak}<small> 日</small></strong><span>成果の連続記録</span></div></article></div>
     ${!state.profile.onboarded ? `<section class="getting-started"><div><strong>はじめの3ステップ</strong><p>自分の仕事を登録すると、ここがあなた専用のホームになります。</p></div><div class="onboarding-steps"><button data-action="capture"><b>${state.inbox.length ? "✓" : "1"}</b>思いつきをメモ</button><button data-action="new-task"><b>${state.tasks.length ? "✓" : "2"}</b>やることを追加</button><button data-action="focus"><b>${state.sessions.length ? "✓" : "3"}</b>25分、集中する</button></div><button class="icon-button" data-action="dismiss-guide" aria-label="はじめの3ステップを閉じる">×</button></section>` : ""}
@@ -527,7 +527,18 @@ document.addEventListener("click", async (event) => {
   try {
     if (action === "navigate") navigate(target.dataset.view);
     else if (action === "settings") openSettings();
-    else if (action === "dismiss-guide")
+    else if (action === "db-backup") {
+      loading(true);
+      try {
+        const backup = await request("/api/storage/backup", {
+          method: "POST",
+          body: "{}",
+        });
+        toast(`DBバックアップを作成しました: ${backup.path}`);
+      } finally {
+        loading(false);
+      }
+    } else if (action === "dismiss-guide")
       await mutate(
         "/api/profile",
         { onboarded: true },

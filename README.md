@@ -11,13 +11,17 @@ npm.cmd install
 npm.cmd run work
 ```
 
+別のPCへ導入する場合は、PostgreSQLを起動してから初回だけ `npm.cmd run setup:postgres` を実行します。専用DB・専用ロール・暗号化済み接続設定を作成します。
+
 `launch-perfectwork.vbs` をダブルクリックしても起動できます。サンプルデータだけで試す場合は、実際のDocumentsやDownloadsに触れないデモを使用してください。
 
 ```powershell
 npm.cmd run work:demo
 ```
 
-PerfectWorkのデータは標準で `%LOCALAPPDATA%\PerfectWork` に保存されます。検索対象と自動化の保存先は、設定画面から変更できます。
+このPCの通常起動では、PerfectWorkの入力データをPostgreSQLへ正本として保存します。`workspace.json`はDB確定後に自動更新する復旧用ミラー、`search-index.json`は再生成可能なファイル検索キャッシュです。詳しい構成は [PostgreSQL構成](docs/postgresql.md) を参照してください。
+
+このPCではPostgreSQL 18の`perfectwork`データベースと、最小権限の`perfectwork_app`ロールを使用します。認証情報はWindows DPAPIで暗号化し、現在のWindowsユーザーだけが読める `%LOCALAPPDATA%\PerfectWork` に保存します。ソースコードやワークスペースJSONには書き込みません。
 
 起動済みなら同じワークスペースを開きます。複数のサーバーが同じデータを上書きすることを防ぎます。旧版からの更新時は旧サーバーを終了してから起動してください。既存データを引き継ぎ、サンプルデータは追加しません。
 
@@ -48,6 +52,7 @@ PerfectWorkのデータは標準で `%LOCALAPPDATA%\PerfectWork` に保存され
 - **表示と操作** — ライト／ダークテーマ、4種のアクセント、スマートフォン幅対応、キーボード操作、再読み込み時の画面復帰
 - **Orbit連携** — 既存のDownloads整理・ルール管理アプリをPerfectWorkから起動
 - **データポータビリティ** — 設定画面からPerfectWorkの全データをJSONで書き出し
+- **PostgreSQL + JSON保護** — 構造化データはトランザクションで保存し、直近100版の履歴と検索用エンティティを保持。復旧用JSONミラーとPostgreSQLバックアップも作成
 
 ## 安全性とプライバシー
 
@@ -61,24 +66,26 @@ PC診断は候補を表示するだけで、ファイルを削除しません。
 
 ## キーボード操作
 
-| キー | 操作 |
-|---|---|
-| `Ctrl+K` | コマンドパレット |
-| `N` | クイックキャプチャ |
+| キー     | 操作                   |
+| -------- | ---------------------- |
+| `Ctrl+K` | コマンドパレット       |
+| `N`      | クイックキャプチャ     |
 | `1`〜`8` | 各ワークスペースへ移動 |
-| `Esc` | ダイアログを閉じる |
+| `Esc`    | ダイアログを閉じる     |
 
 ## 開発と検証
 
 ```powershell
 npm.cmd test
 npm.cmd run test:ui
+npm.cmd run test:postgres
+npm.cmd run db:status
 node --check work.mjs
 node --check workbench/app.js
 node --check workbench/experience.js
 ```
 
-テストは一時フォルダを使い、インボックス→タスク→プロジェクト→集中→作業ログの流れ、Word/PDF/ソースコード検索、重複判定、自動化のプレビュー・上書き防止・Undo、HTTP認証と主要APIを検証します。
+テストは一時フォルダを使い、インボックス→タスク→プロジェクト→集中→作業ログの流れ、Word/PDF/ソースコード検索、重複判定、自動化のプレビュー・上書き防止・Undo、HTTP認証と主要APIを検証します。`test:postgres`は専用の一時スキーマを作り、実際のトランザクション、再接続、JSONミラー、同時更新の競合防止を確認してから削除します。
 
 `test:ui` はインストール済みのChromeまたはEdgeをヘッドレス起動し、実際の保存フォーム、全画面、集中・習慣・自動化、検索競合、テーマ、再読み込み、390px幅での横溢れを検証します。ブラウザを自動検出できない場合は `PERFECTWORK_BROWSER` に実行ファイルのパスを指定してください。検証データとスクリーンショットはログに表示される一時フォルダに保存されます。追加のテスト用npmパッケージは不要です。
 
@@ -175,14 +182,14 @@ PowerShell の実行ポリシーで `npm` が止められる環境では、`npm.
 
 ## コマンド
 
-| コマンド | 役割 |
-|---|---|
+| コマンド          | 役割                                                                         |
+| ----------------- | ---------------------------------------------------------------------------- |
 | `npm run preview` | 移動予定、カテゴリ別件数、容量、保留理由を表示します。ファイルは変更しません |
-| `npm run apply` | 同じ安全チェックをもう一度行い、ファイルを移動してUndo履歴を残します |
-| `npm run undo` | 直近の未取消バッチを元のフォルダへ戻します |
-| `npm run history` | 直近10回の実行日時、状態、件数、容量を表示します |
-| `npm run doctor` | 設定、元フォルダ、読み取り権限、安全なパス構成を診断します |
-| `npm test` | 安全性を含む自動テストを実行します |
+| `npm run apply`   | 同じ安全チェックをもう一度行い、ファイルを移動してUndo履歴を残します         |
+| `npm run undo`    | 直近の未取消バッチを元のフォルダへ戻します                                   |
+| `npm run history` | 直近10回の実行日時、状態、件数、容量を表示します                             |
+| `npm run doctor`  | 設定、元フォルダ、読み取り権限、安全なパス構成を診断します                   |
+| `npm test`        | 安全性を含む自動テストを実行します                                           |
 
 全件表示は `node organize.mjs preview --all`、自動化向けJSONは `node organize.mjs preview --json`、別設定の試用は `node organize.mjs preview --config my-config.json` です。
 

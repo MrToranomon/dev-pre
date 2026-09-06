@@ -244,3 +244,58 @@ test("overlapping search roots do not count the same file twice or invent duplic
   assert.equal(health.files, 1);
   assert.equal(health.duplicateGroups.length, 0);
 });
+
+test("database-backed store imports JSON, persists revisions, and keeps a recovery mirror", async (t) => {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), "perfectwork-db-store-"),
+  );
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const original = await new WorkspaceStore(directory).init();
+  await original.createTask({ title: "Import this task" });
+  const repository = {
+    state: null,
+    revision: 0,
+    async init() {},
+    async load() {
+      return this.state
+        ? { state: structuredClone(this.state), revision: this.revision }
+        : null;
+    },
+    async initialize(state) {
+      this.state = structuredClone(state);
+      this.revision = 1;
+      return this.load();
+    },
+    async save(state, expected) {
+      assert.equal(expected, this.revision);
+      this.state = structuredClone(state);
+      return ++this.revision;
+    },
+    async status() {
+      return {
+        backend: "postgresql",
+        connected: true,
+        revision: this.revision,
+        entities: this.state.tasks.length,
+      };
+    },
+    async close() {},
+  };
+  const databaseStore = await new WorkspaceStore(directory, {
+    repository,
+  }).init();
+  assert.equal(databaseStore.data.tasks[0].title, "Import this task");
+  assert.equal(databaseStore.revision, 1);
+  await databaseStore.createTask({ title: "Stored in both places" });
+  assert.equal(repository.state.tasks.length, 2);
+  assert.equal(
+    JSON.parse(await fs.readFile(databaseStore.file, "utf8")).tasks.length,
+    2,
+  );
+  assert.equal((await databaseStore.storageStatus()).backend, "postgresql");
+  assert.ok(
+    (await fs.readdir(directory)).some((file) =>
+      file.startsWith("workspace.before-postgres-"),
+    ),
+  );
+});

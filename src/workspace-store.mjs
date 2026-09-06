@@ -7,7 +7,7 @@ import { atomicJson, exists } from "./safety.mjs";
 import { localDay, validDay } from "./local-date.mjs";
 import { workspaceTemplates } from "./workspace-templates.mjs";
 
-const VERSION = 1;
+const VERSION = 2;
 const nowIso = () => new Date().toISOString();
 const id = (prefix) => `${prefix}_${crypto.randomUUID()}`;
 const dayKey = localDay;
@@ -170,18 +170,58 @@ export function workspaceDataDirectory(environment = process.env) {
 }
 
 export class WorkspaceStore {
-  constructor(directory = workspaceDataDirectory()) {
+  constructor(
+    directory = workspaceDataDirectory(),
+    { repository = null } = {},
+  ) {
     this.directory = path.resolve(directory);
     this.file = path.join(this.directory, "workspace.json");
     this.queue = Promise.resolve();
     this.data = null;
+    this.repository = repository;
+    this.revision = 0;
+    this.mirrorError = null;
   }
 
   async init() {
     await fs.mkdir(this.directory, { recursive: true });
+    if (this.repository) {
+      await this.repository.init();
+      const saved = await this.repository.load();
+      if (saved) {
+        this.data = migrate(saved.state);
+        this.revision = saved.revision;
+      } else {
+        const hadJson = await exists(this.file);
+        this.data = await this.#readJsonOrDefault();
+        if (hadJson)
+          await fs.copyFile(
+            this.file,
+            path.join(
+              this.directory,
+              `workspace.before-postgres-${Date.now()}.json`,
+            ),
+          );
+        const initialized = await this.repository.initialize(
+          this.data,
+          hadJson ? "Imported workspace.json" : "Created new workspace",
+        );
+        this.data = migrate(initialized.state);
+        this.revision = initialized.revision;
+      }
+      await this.#mirror();
+    } else {
+      const hadJson = await exists(this.file);
+      this.data = await this.#readJsonOrDefault();
+      if (!hadJson) await atomicJson(this.file, this.data);
+    }
+    return this;
+  }
+
+  async #readJsonOrDefault() {
     if (await exists(this.file)) {
       try {
-        this.data = migrate(JSON.parse(await fs.readFile(this.file, "utf8")));
+        return migrate(JSON.parse(await fs.readFile(this.file, "utf8")));
       } catch (error) {
         const damaged = path.join(
           this.directory,
@@ -192,11 +232,18 @@ export class WorkspaceStore {
           `PerfectWorkのデータを読み込めません。破損ファイルを保全しました: ${damaged} (${error.message})`,
         );
       }
-    } else {
-      this.data = defaultState();
-      await atomicJson(this.file, this.data);
     }
-    return this;
+    return defaultState();
+  }
+
+  async #mirror() {
+    try {
+      await atomicJson(this.file, this.data);
+      this.mirrorError = null;
+    } catch (error) {
+      this.mirrorError = error.message;
+      process.stderr.write(`JSON mirror warning: ${error.message}\n`);
+    }
   }
 
   snapshot() {
@@ -208,12 +255,49 @@ export class WorkspaceStore {
       const draft = structuredClone(this.data);
       const result = await action(draft);
       draft.updatedAt = nowIso();
-      await atomicJson(this.file, draft);
+      if (this.repository)
+        this.revision = await this.repository.save(
+          draft,
+          this.revision,
+          draft.activity[0]?.title || "Workspace update",
+        );
+      else await atomicJson(this.file, draft);
       this.data = draft;
+      if (this.repository) await this.#mirror();
       return result;
     });
     this.queue = run.catch(() => {});
     return run;
+  }
+
+  async storageStatus() {
+    if (!this.repository)
+      return {
+        backend: "json",
+        connected: true,
+        file: this.file,
+        mirror: null,
+      };
+    return {
+      ...(await this.repository.status()),
+      mirror: this.file,
+      mirrorError: this.mirrorError,
+    };
+  }
+
+  async close() {
+    await this.queue;
+    await this.repository?.close();
+  }
+
+  async databaseBackup() {
+    if (!this.repository?.backup)
+      throw new Error(
+        "PostgreSQLを使用していないため、DBバックアップは必要ありません。",
+      );
+    return this.repository.backup(
+      path.join(this.directory, "database-backups"),
+    );
   }
 
   activity(draft, type, title, detail = "", metadata = {}) {

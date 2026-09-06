@@ -26,6 +26,7 @@ import { exists, within } from "./src/safety.mjs";
 import { localDay } from "./src/local-date.mjs";
 import { workspaceTemplates } from "./src/workspace-templates.mjs";
 import { acquireWorkspaceInstance } from "./src/workspace-instance.mjs";
+import { createPostgresRepository } from "./src/postgres-workspace.mjs";
 
 const root = import.meta.dirname;
 const dataIndex = process.argv.indexOf("--data-dir");
@@ -46,7 +47,12 @@ if (instance.existing) {
     );
   process.exit(0);
 }
-const store = await new WorkspaceStore(dataDirectory).init();
+const postgres = process.argv.includes("--json-only")
+  ? null
+  : await createPostgresRepository(dataDirectory);
+const store = await new WorkspaceStore(dataDirectory, {
+  repository: postgres,
+}).init();
 const search = await new SearchEngine(dataDirectory).init();
 const token = crypto.randomBytes(24).toString("hex");
 const automationPreviews = new Map();
@@ -168,6 +174,7 @@ async function appState() {
   }
   return {
     ...data,
+    storage: await store.storageStatus(),
     templates: workspaceTemplates,
     insights: productivityInsights(data),
     search: search.status,
@@ -263,6 +270,8 @@ async function api(request, response, url) {
     return mutate(response, () => store.addWorklog(input), 201);
   if (route === "/api/worklog/update")
     return mutate(response, () => store.updateWorklog(input.id, input));
+  if (route === "/api/storage/backup")
+    return send(response, 200, await store.databaseBackup());
   if (route === "/api/search/reindex") {
     const status = await search.build(store.data.settings);
     return send(response, 200, { status });
@@ -366,7 +375,14 @@ async function api(request, response, url) {
   }
   if (route === "/api/shutdown") {
     send(response, 200, { ok: true });
-    setTimeout(() => server.close(() => process.exit(0)), 100);
+    setTimeout(
+      () =>
+        server.close(async () => {
+          await store.close().catch(() => {});
+          process.exit(0);
+        }),
+      100,
+    );
     return;
   }
   return send(response, 404, { error: "Not found." });
@@ -482,7 +498,7 @@ server.listen(0, "127.0.0.1", async () => {
   const url = `http://127.0.0.1:${port}/?token=${token}`;
   await instance.publish(url);
   process.stdout.write(
-    `PerfectWork is open at ${url}\nData: ${dataDirectory}\n`,
+    `PerfectWork is open at ${url}\nData: ${dataDirectory}\nStorage: ${postgres ? "PostgreSQL + JSON mirror" : "JSON"}\n`,
   );
   if (!process.argv.includes("--no-open")) openExternal(url);
   runScheduled(true).catch(() => {});

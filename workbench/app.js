@@ -773,6 +773,11 @@ function openSettings() {
     state.settings.healthLargeFileBytes / 1024 / 1024,
   );
   form.elements.healthStaleDays.value = state.settings.healthStaleDays;
+  const storage = state.storage;
+  $("#storageSummary").innerHTML =
+    storage?.backend === "postgresql"
+      ? `<span class="storage-mark">DB</span><div><strong>PostgreSQL ${escapeHtml(storage.version || "")}</strong><p>${escapeHtml(storage.database)} · revision ${storage.revision} · ${storage.entities} entities</p><small>入力データの正本はPostgreSQL。復旧用JSONミラーも自動更新します。</small><button class="button ghost small storage-backup" type="button" data-action="db-backup">DBバックアップを作成</button></div>`
+      : `<span class="storage-mark">JSON</span><div><strong>JSONファイル</strong><p>ローカルファイルをデータの正本として使用中</p></div>`;
   openDialog("#settingsDialog");
 }
 $("#settingsButton").addEventListener("click", openSettings);
