@@ -1,6 +1,6 @@
 {
   "name": "perfectwork",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -17,7 +17,8 @@
     "manage": "node manage.mjs",
     "demo": "node scripts/demo.mjs",
     "doctor": "node organize.mjs doctor",
-    "test": "node --test"
+    "test": "node --test",
+    "test:ui": "node scripts/perfectwork-ui.mjs"
   },
   "dependencies": {
     "mammoth": "^1.12.2",

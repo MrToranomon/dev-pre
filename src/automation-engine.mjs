@@ -2,8 +2,9 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { assertNoLinks, atomicJson, exists, within } from "./safety.mjs";
+import { localDay } from "./local-date.mjs";
 
-const dateKey = () => new Date().toISOString().slice(0, 10);
+const dateKey = localDay;
 const timestamp = () => new Date().toISOString().replace(/[:.]/g, "-");
 
 function checkedTarget(root, target) {

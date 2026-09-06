@@ -1,9 +1,17 @@
 {
   "name": "PerfectWork",
   "short_name": "PerfectWork",
-  "description": "Personal Work OS",
+  "description": "あなたの一歩を、前へ。仕事とアイデアをつなぐワークスペース。",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b0d17",
-  "theme_color": "#0b0d17"
+  "background_color": "#f7f8fa",
+  "theme_color": "#7660d3",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
 }

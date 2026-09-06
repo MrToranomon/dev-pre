@@ -112,7 +112,20 @@ test("PerfectWork HTTP API authenticates and persists a complete workflow", asyn
   const call = async (route, value) => { const response = await fetch(new URL(route, appUrl), { headers, ...(value === undefined ? {} : { method: "POST", body: JSON.stringify(value) }) }); return { status: response.status, data: response.headers.get("content-type").includes("json") ? await response.json() : await response.text() }; };
   assert.equal((await fetch(new URL("/api/state", appUrl))).status, 403);
   assert.equal((await fetch(appUrl)).status, 200);
-  for (const asset of ["/app.js", "/styles.css", "/manifest.webmanifest"]) assert.equal((await fetch(new URL(asset, appUrl))).status, 200);
+  const pageResponse = await fetch(appUrl);
+  const cookie = pageResponse.headers.get("set-cookie").split(";")[0];
+  assert.match(cookie, new RegExp(`^perfectwork-session-${appUrl.port}=`));
+  assert.equal((await fetch(new URL("/", appUrl), { headers: { Cookie: cookie } })).status, 200);
+  assert.equal((await fetch(new URL("/", appUrl))).status, 403);
+  const secondLaunch = spawn(process.execPath, ["work.mjs", "--no-open", "--data-dir", item.data], { cwd: path.resolve(import.meta.dirname, ".."), windowsHide: true });
+  let secondOutput = ""; secondLaunch.stdout.on("data", chunk => { secondOutput += chunk; });
+  const secondExit = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { secondLaunch.kill(); reject(new Error("Second instance did not exit")); }, 10_000);
+    secondLaunch.once("error", error => { clearTimeout(timer); reject(error); });
+    secondLaunch.once("exit", code => { clearTimeout(timer); resolve(code); });
+  });
+  assert.equal(secondExit, 0); assert.ok(secondOutput.includes(`already open at ${appUrl.href}`));
+  for (const asset of ["/app.js", "/styles.css", "/experience.js", "/experience.css", "/icon.svg", "/manifest.webmanifest"]) assert.equal((await fetch(new URL(asset, appUrl))).status, 200);
   assert.equal((await fetch(new URL("/api/state", appUrl), { headers: { ...headers, Origin: "https://example.invalid" } })).status, 403);
   const inbox = await call("/api/inbox/create", { title: "API capture", body: "linked workflow" });
   assert.equal(inbox.status, 201);

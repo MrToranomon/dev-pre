@@ -1,116 +1,601 @@
 <!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0b0d17">
-  <meta name="description" content="仕事、情報、ファイルをひとつにつなぐローカルファーストの作業OS">
-  <meta name="perfectwork-token" content="__PERFECTWORK_TOKEN__">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css">
-  <title>PerfectWork — Personal Work OS</title>
-</head>
-<body>
-  <div class="app">
-    <aside class="sidebar" id="sidebar">
-      <div class="brand"><span class="brand-glyph">P</span><div><strong>PerfectWork</strong><small>PERSONAL WORK OS</small></div></div>
-      <button class="quick-capture" id="captureButton" type="button"><span>＋</span> クイックキャプチャ <kbd>N</kbd></button>
-      <nav class="nav" id="navigation" aria-label="メインメニュー">
-        <button data-view="today" class="active"><span>⌂</span>今日<kbd>1</kbd></button>
-        <button data-view="search"><span>⌕</span>全文検索<kbd>2</kbd></button>
-        <button data-view="inbox"><span>↓</span>インボックス<em id="navInbox">0</em></button>
-        <button data-view="tasks"><span>✓</span>タスク<em id="navTasks">0</em></button>
-        <button data-view="projects"><span>◇</span>プロジェクト<em id="navProjects">0</em></button>
-        <button data-view="worklog"><span>◷</span>作業ログ<kbd>6</kbd></button>
-        <button data-view="automations"><span>⌁</span>自動化<kbd>7</kbd></button>
-        <button data-view="health"><span>◉</span>PC診断<kbd>8</kbd></button>
-      </nav>
-      <div class="sidebar-bottom">
-        <button id="commandButton" type="button"><span>⌘</span>コマンドパレット <kbd>Ctrl K</kbd></button>
-        <button id="settingsButton" type="button"><span>⚙</span>設定</button>
-        <button id="orbitButton" type="button"><span>✦</span>Orbit Organizer</button>
-      </div>
-    </aside>
-
-    <main class="main">
-      <header class="topbar">
-        <button class="mobile-menu" id="mobileMenu" type="button" aria-label="メニューを開く">☰</button>
-        <div><p class="eyebrow" id="viewEyebrow">COMMAND CENTER</p><h1 id="viewTitle">今日</h1></div>
-        <div class="top-actions">
-          <button class="search-trigger" id="searchTrigger" type="button"><span>⌕</span><span>どこからでも検索</span><kbd>Ctrl K</kbd></button>
-          <button class="focus-pill" id="focusButton" type="button"><i></i><span id="focusLabel">フォーカスを開始</span><strong id="focusClock"></strong></button>
-          <button class="avatar" id="profileButton" type="button" aria-label="プロフィール設定">PW</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0d17" />
+    <meta
+      name="description"
+      content="仕事、情報、ファイルをひとつにつなぐローカルファーストの作業OS"
+    />
+    <meta name="perfectwork-token" content="__PERFECTWORK_TOKEN__" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/experience.css" />
+    <title>PerfectWork — Personal Work OS</title>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <span class="brand-glyph">✳</span>
+          <div>
+            <strong>PerfectWork</strong><small>MAKE ROOM FOR GREAT WORK</small>
+          </div>
         </div>
-      </header>
-      <div class="error-banner" id="errorBanner" role="alert" hidden></div>
-      <section class="view" id="view" aria-live="polite"></section>
-    </main>
-  </div>
+        <button class="quick-capture" id="captureButton" type="button">
+          <span>＋</span> メモを残す <kbd>N</kbd>
+        </button>
+        <nav class="nav" id="navigation" aria-label="メインメニュー">
+          <p class="nav-section">MY WORKSPACE</p>
+          <button data-view="today" class="active">
+            <span>⌂</span>ホーム<kbd>1</kbd>
+          </button>
+          <button data-view="tasks">
+            <span>☑</span>タスク<em id="navTasks">0</em>
+          </button>
+          <button data-view="planner"><span>▦</span>週間プラン</button>
+          <button data-view="projects">
+            <span>◇</span>プロジェクト<em id="navProjects">0</em>
+          </button>
+          <button data-view="inbox">
+            <span>▤</span>メモ・アイデア<em id="navInbox">0</em>
+          </button>
+          <button data-view="habits"><span>♧</span>習慣</button>
+          <button data-view="worklog"><span>◷</span>振り返り</button>
+          <p class="nav-section">TOOLS & INSPIRATION</p>
+          <button data-view="search">
+            <span>⌕</span>ファイル検索<kbd>2</kbd>
+          </button>
+          <button data-view="automations"><span>⌁</span>自動化</button>
+          <button data-view="health"><span>◉</span>ファイル診断</button>
+          <button data-view="library">
+            <span>✧</span>はじめ方・テンプレート
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <button id="commandButton" type="button">
+            <span>⌘</span>コマンドパレット <kbd>Ctrl K</kbd>
+          </button>
+          <button id="themeButton" type="button">
+            <span>◐</span>表示テーマを切り替え
+          </button>
+          <button id="settingsButton" type="button">
+            <span>⚙</span>設定・バックアップ
+          </button>
+          <button id="orbitButton" type="button">
+            <span>✦</span>Orbit Organizer
+          </button>
+        </div>
+      </aside>
 
-  <dialog id="captureDialog" aria-labelledby="captureTitle"><form id="captureForm" class="dialog-body">
-    <button class="dialog-close" type="button" data-close="captureDialog" aria-label="閉じる">×</button>
-    <p class="eyebrow">CAPTURE NOW, ORGANIZE LATER</p><h2 id="captureTitle">頭の中から、ここへ。</h2>
-    <input name="id" type="hidden"><label><span>タイトル</span><input name="title" id="captureTitleInput" maxlength="300" required autocomplete="off" placeholder="アイデア、URL、やること…"></label>
-    <div class="field-row"><label><span>種類</span><select name="kind"><option value="note">メモ</option><option value="idea">アイデア</option><option value="link">リンク</option><option value="file">ファイル</option></select></label><label><span>タグ</span><input name="tags" placeholder="仕事, 調査"></label></div>
-    <label><span>URL（任意）</span><input name="url" type="url" placeholder="https://"></label>
-    <label><span>本文</span><textarea name="body" rows="6" maxlength="20000" placeholder="思考をそのまま書いてください。整理はあとでできます。"></textarea></label>
-    <div class="dialog-actions"><button class="button ghost" type="button" data-close="captureDialog">キャンセル</button><button class="button primary" type="submit">インボックスへ保存</button></div>
-  </form></dialog>
-
-  <dialog id="taskDialog" aria-labelledby="taskDialogTitle"><form id="taskForm" class="dialog-body">
-    <button class="dialog-close" type="button" data-close="taskDialog" aria-label="閉じる">×</button><p class="eyebrow">NEXT ACTION</p><h2 id="taskDialogTitle">タスクを追加</h2>
-    <input name="id" type="hidden"><label><span>タスク</span><input name="title" required maxlength="300" autocomplete="off"></label>
-    <div class="field-row"><label><span>期限</span><input name="dueDate" type="date"></label><label><span>優先度</span><select name="priority"><option value="normal">通常</option><option value="high">高</option><option value="low">低</option></select></label></div>
-    <label><span>プロジェクト</span><select name="projectId" id="taskProject"><option value="">なし</option></select></label><label><span>メモ</span><textarea name="notes" rows="4"></textarea></label>
-    <div class="dialog-actions"><button class="button ghost" type="button" data-close="taskDialog">キャンセル</button><button class="button primary" type="submit">追加する</button></div>
-  </form></dialog>
-
-  <dialog id="projectDialog" aria-labelledby="projectDialogTitle"><form id="projectForm" class="dialog-body">
-    <button class="dialog-close" type="button" data-close="projectDialog" aria-label="閉じる">×</button><p class="eyebrow">NEW MISSION</p><h2 id="projectDialogTitle">プロジェクトを開始</h2>
-    <input name="id" type="hidden"><label><span>プロジェクト名</span><input name="name" required maxlength="200" autocomplete="off"></label><label><span>目的・ゴール</span><textarea name="description" rows="4"></textarea></label>
-    <div class="field-row"><label><span>期限</span><input name="dueDate" type="date"></label><label><span>色</span><input name="color" type="color" value="#8b7cff"></label></div>
-    <div class="field-row"><label><span>状態</span><select name="status"><option value="active">進行中</option><option value="paused">保留</option><option value="completed">完了</option><option value="archived">アーカイブ</option></select></label><label><span>進捗（%）</span><input name="progress" type="number" min="0" max="100" value="0"></label></div>
-    <label><span>プロジェクトフォルダ（任意）</span><input name="folder" placeholder="C:\Projects\my-project"></label>
-    <label><span>プロジェクトノート</span><textarea name="notes" rows="4"></textarea></label>
-    <div class="field-row"><label><span>関連リンク名</span><input name="linkLabel" placeholder="仕様書"></label><label><span>関連URL</span><input name="linkUrl" type="url" placeholder="https://"></label></div>
-    <div class="dialog-actions"><button class="button ghost" type="button" data-close="projectDialog">キャンセル</button><button class="button primary" type="submit">保存する</button></div>
-  </form></dialog>
-
-  <dialog id="worklogDialog" aria-labelledby="worklogTitle"><form id="worklogForm" class="dialog-body">
-    <button class="dialog-close" type="button" data-close="worklogDialog" aria-label="閉じる">×</button><p class="eyebrow">RECORD THE WIN</p><h2 id="worklogTitle">作業を記録</h2>
-    <label><span>やったこと</span><input name="title" required maxlength="300"></label><div class="field-row"><label><span>日付</span><input name="date" type="date" required></label><label><span>時間（分）</span><input name="minutes" type="number" min="0" max="1440" value="30"></label></div>
-    <label><span>プロジェクト</span><select name="projectId" id="worklogProject"><option value="">なし</option></select></label><label><span>詳細・成果</span><textarea name="body" rows="5"></textarea></label>
-    <div class="dialog-actions"><button class="button ghost" type="button" data-close="worklogDialog">キャンセル</button><button class="button primary" type="submit">記録する</button></div>
-  </form></dialog>
-
-  <dialog id="automationDialog" aria-labelledby="automationTitle"><form id="automationForm" class="dialog-body">
-    <button class="dialog-close" type="button" data-close="automationDialog" aria-label="閉じる">×</button><p class="eyebrow">NO-CODE AUTOMATION</p><h2 id="automationTitle">自動化を作成</h2>
-    <input name="id" type="hidden"><label><span>名前</span><input name="name" required maxlength="200"></label><label><span>説明</span><input name="description" maxlength="1000"></label>
-    <div class="field-row"><label><span>処理</span><select name="action"><option value="daily-note">デイリーノートを作る</option><option value="inbox-digest">インボックスをMarkdown化</option><option value="project-snapshot">プロジェクト一覧を保存</option><option value="backup">全データをバックアップ</option></select></label><label><span>実行タイミング</span><select name="trigger"><option value="manual">手動</option><option value="startup">アプリ起動時・1日1回</option><option value="daily">アプリ起動中・1日1回</option></select></label></div>
-    <label class="check"><input name="enabled" type="checkbox"> 自動実行を有効にする</label>
-    <div class="dialog-actions"><button class="button ghost" type="button" data-close="automationDialog">キャンセル</button><button class="button primary" type="submit">保存する</button></div>
-  </form></dialog>
-
-  <dialog id="automationPreviewDialog" aria-labelledby="automationPreviewTitle"><div class="dialog-body">
-    <button class="dialog-close" type="button" data-close="automationPreviewDialog" aria-label="閉じる">×</button><p class="eyebrow">SAFE PREVIEW</p><h2 id="automationPreviewTitle">実行内容を確認</h2><p id="automationPreviewSummary"></p><div id="automationPreviewList" class="stack-list"></div>
-    <p class="hint">既存ファイルは上書きしません。同名の場合は連番を付けます。作成後に編集していなければ履歴からUndoできます。</p>
-    <div class="dialog-actions"><button class="button ghost" type="button" data-close="automationPreviewDialog">キャンセル</button><button class="button primary" type="button" id="automationRunButton">この内容で実行</button></div>
-  </div></dialog>
-
-  <dialog id="settingsDialog" aria-labelledby="settingsTitle"><form id="settingsForm" class="dialog-body wide-form">
-    <button class="dialog-close" type="button" data-close="settingsDialog" aria-label="閉じる">×</button><p class="eyebrow">LOCAL-FIRST SETTINGS</p><h2 id="settingsTitle">PerfectWork設定</h2>
-    <div class="settings-grid"><label><span>表示名</span><input name="name" maxlength="80"></label><label><span>アクセント</span><select name="accent"><option value="violet">Violet</option><option value="cyan">Cyan</option><option value="lime">Lime</option><option value="sunset">Sunset</option></select></label>
-      <label class="full"><span>検索対象フォルダ（1行に1つ）</span><textarea name="searchRoots" rows="5" required></textarea><small>PDF、Word、Markdown、コードなどを名前と内容から検索します。リンク先は追跡しません。</small></label>
-      <label class="full"><span>自動化の保存先</span><input name="writeRoot" required><small>自動化はこのフォルダの内側にだけファイルを作ります。</small></label>
-      <label><span>検索する最大ファイル数</span><input name="searchMaxFiles" type="number" min="100" max="100000"></label><label><span>巨大ファイル判定（MB）</span><input name="healthLargeFileMB" type="number" min="1" max="10240"></label><label><span>古いファイル判定（日）</span><input name="healthStaleDays" type="number" min="1" max="3650"></label>
+      <main class="main">
+        <header class="topbar">
+          <button
+            class="mobile-menu"
+            id="mobileMenu"
+            type="button"
+            aria-label="メニューを開く"
+          >
+            ☰
+          </button>
+          <div>
+            <p class="eyebrow" id="viewEyebrow">COMMAND CENTER</p>
+            <h1 id="viewTitle">今日</h1>
+          </div>
+          <div class="top-actions">
+            <button class="search-trigger" id="searchTrigger" type="button">
+              <span>⌕</span><span>探す・移動する</span><kbd>Ctrl K</kbd>
+            </button>
+            <button
+              class="focus-pill"
+              id="focusButton"
+              type="button"
+              aria-label="集中タイマーを開く"
+            >
+              <i></i><span id="focusLabel">集中タイマー</span
+              ><strong id="focusClock"></strong>
+            </button>
+            <button
+              class="avatar"
+              id="profileButton"
+              type="button"
+              aria-label="プロフィール設定"
+            >
+              PW
+            </button>
+          </div>
+        </header>
+        <div class="error-banner" id="errorBanner" role="alert" hidden></div>
+        <section class="view" id="view" aria-live="polite"></section>
+      </main>
     </div>
-    <div class="dialog-actions split"><button class="button ghost" type="button" id="exportDataButton">全データを書き出す</button><span></span><button class="button ghost" type="button" data-close="settingsDialog">キャンセル</button><button class="button primary" type="submit">保存する</button></div>
-  </form></dialog>
 
-  <dialog id="commandDialog" class="command-dialog" aria-labelledby="commandTitle"><div class="command-box"><label><span>⌕</span><input id="commandInput" autocomplete="off" placeholder="検索またはコマンドを入力…" aria-label="コマンド検索"><kbd>Esc</kbd></label><div id="commandResults" class="command-results"></div><p class="command-hint">↑↓で移動 · Enterで実行 · Ctrl Kでいつでも開く</p></div></dialog>
+    <dialog id="captureDialog" aria-labelledby="captureTitle">
+      <form id="captureForm" class="dialog-body">
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="captureDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <p class="eyebrow">CAPTURE NOW, ORGANIZE LATER</p>
+        <h2 id="captureTitle">頭の中から、ここへ。</h2>
+        <input name="id" type="hidden" /><label
+          ><span>タイトル</span
+          ><input
+            name="title"
+            id="captureTitleInput"
+            maxlength="300"
+            required
+            autocomplete="off"
+            placeholder="アイデア、URL、やること…"
+        /></label>
+        <div class="field-row">
+          <label
+            ><span>種類</span
+            ><select name="kind">
+              <option value="note">メモ</option>
+              <option value="idea">アイデア</option>
+              <option value="link">リンク</option>
+              <option value="file">ファイル</option>
+            </select></label
+          ><label
+            ><span>タグ</span><input name="tags" placeholder="仕事, 調査"
+          /></label>
+        </div>
+        <label
+          ><span>URL（任意）</span
+          ><input name="url" type="url" placeholder="https://"
+        /></label>
+        <label
+          ><span>本文</span
+          ><textarea
+            name="body"
+            rows="6"
+            maxlength="20000"
+            placeholder="思考をそのまま書いてください。整理はあとでできます。"
+          ></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button class="button ghost" type="button" data-close="captureDialog">
+            キャンセル</button
+          ><button class="button primary" type="submit">
+            インボックスへ保存
+          </button>
+        </div>
+      </form>
+    </dialog>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <div class="loading" id="loading" role="status" aria-live="polite"><span></span><p>考えています…</p></div>
-  <script src="/app.js"></script>
-</body>
+    <dialog id="taskDialog" aria-labelledby="taskDialogTitle">
+      <form id="taskForm" class="dialog-body">
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="taskDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <p class="eyebrow">NEXT ACTION</p>
+        <h2 id="taskDialogTitle">タスクを追加</h2>
+        <input name="id" type="hidden" /><label
+          ><span>タスク</span
+          ><input name="title" required maxlength="300" autocomplete="off"
+        /></label>
+        <div class="field-row">
+          <label><span>期限</span><input name="dueDate" type="date" /></label
+          ><label
+            ><span>優先度</span
+            ><select name="priority">
+              <option value="normal">通常</option>
+              <option value="high">高</option>
+              <option value="low">低</option>
+            </select></label
+          >
+        </div>
+        <div class="field-row">
+          <label
+            ><span>取り組む予定日</span
+            ><input name="scheduledDate" type="date" /></label
+          ><label
+            ><span>見積時間（分）</span
+            ><input
+              name="estimateMinutes"
+              type="number"
+              min="0"
+              max="1440"
+              value="25"
+          /></label>
+        </div>
+        <label
+          ><span>プロジェクト</span
+          ><select name="projectId" id="taskProject">
+            <option value="">なし</option>
+          </select></label
+        ><label
+          ><span>メモ</span><textarea name="notes" rows="3"></textarea>
+        </label>
+        <label
+          ><span>チェックリスト（1行に1項目）</span
+          ><textarea
+            name="checklistText"
+            rows="3"
+            placeholder="資料を集める&#10;下書きを作る&#10;内容を確認する"
+          ></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button class="button ghost" type="button" data-close="taskDialog">
+            キャンセル</button
+          ><button class="button primary" type="submit">追加する</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="projectDialog" aria-labelledby="projectDialogTitle">
+      <form id="projectForm" class="dialog-body">
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="projectDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <p class="eyebrow">NEW MISSION</p>
+        <h2 id="projectDialogTitle">プロジェクトを開始</h2>
+        <input name="id" type="hidden" /><label
+          ><span>プロジェクト名</span
+          ><input
+            name="name"
+            required
+            maxlength="200"
+            autocomplete="off" /></label
+        ><label
+          ><span>目的・ゴール</span
+          ><textarea name="description" rows="4"></textarea>
+        </label>
+        <div class="field-row">
+          <label><span>期限</span><input name="dueDate" type="date" /></label
+          ><label
+            ><span>色</span><input name="color" type="color" value="#8b7cff"
+          /></label>
+        </div>
+        <div class="field-row">
+          <label
+            ><span>状態</span
+            ><select name="status">
+              <option value="active">進行中</option>
+              <option value="paused">保留</option>
+              <option value="completed">完了</option>
+              <option value="archived">アーカイブ</option>
+            </select></label
+          ><label
+            ><span>進捗（%）</span
+            ><input name="progress" type="number" min="0" max="100" value="0"
+          /></label>
+        </div>
+        <label
+          ><span>プロジェクトフォルダ（任意）</span
+          ><input name="folder" placeholder="C:\Projects\my-project"
+        /></label>
+        <label
+          ><span>プロジェクトノート</span
+          ><textarea name="notes" rows="4"></textarea>
+        </label>
+        <div class="field-row">
+          <label
+            ><span>関連リンク名</span
+            ><input name="linkLabel" placeholder="仕様書" /></label
+          ><label
+            ><span>関連URL</span
+            ><input name="linkUrl" type="url" placeholder="https://"
+          /></label>
+        </div>
+        <div class="dialog-actions">
+          <button class="button ghost" type="button" data-close="projectDialog">
+            キャンセル</button
+          ><button class="button primary" type="submit">保存する</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="worklogDialog" aria-labelledby="worklogTitle">
+      <form id="worklogForm" class="dialog-body">
+        <input name="id" type="hidden" />
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="worklogDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <p class="eyebrow">RECORD THE WIN</p>
+        <h2 id="worklogTitle">作業を記録</h2>
+        <label
+          ><span>やったこと</span><input name="title" required maxlength="300"
+        /></label>
+        <div class="field-row">
+          <label
+            ><span>日付</span><input name="date" type="date" required /></label
+          ><label
+            ><span>時間（分）</span
+            ><input name="minutes" type="number" min="0" max="1440" value="30"
+          /></label>
+        </div>
+        <label
+          ><span>プロジェクト</span
+          ><select name="projectId" id="worklogProject">
+            <option value="">なし</option>
+          </select></label
+        ><label
+          ><span>詳細・成果</span><textarea name="body" rows="5"></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button class="button ghost" type="button" data-close="worklogDialog">
+            キャンセル</button
+          ><button class="button primary" type="submit">記録する</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="automationDialog" aria-labelledby="automationTitle">
+      <form id="automationForm" class="dialog-body">
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="automationDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <p class="eyebrow">NO-CODE AUTOMATION</p>
+        <h2 id="automationTitle">自動化を作成</h2>
+        <input name="id" type="hidden" /><label
+          ><span>名前</span
+          ><input name="name" required maxlength="200" /></label
+        ><label
+          ><span>説明</span><input name="description" maxlength="1000"
+        /></label>
+        <div class="field-row">
+          <label
+            ><span>処理</span
+            ><select name="action">
+              <option value="daily-note">デイリーノートを作る</option>
+              <option value="inbox-digest">インボックスをMarkdown化</option>
+              <option value="project-snapshot">プロジェクト一覧を保存</option>
+              <option value="backup">全データをバックアップ</option>
+            </select></label
+          ><label
+            ><span>実行タイミング</span
+            ><select name="trigger">
+              <option value="manual">手動</option>
+              <option value="startup">アプリ起動時・1日1回</option>
+              <option value="daily">アプリ起動中・1日1回</option>
+            </select></label
+          >
+        </div>
+        <label class="check"
+          ><input name="enabled" type="checkbox" /> 自動実行を有効にする</label
+        >
+        <div class="dialog-actions">
+          <button
+            class="button ghost"
+            type="button"
+            data-close="automationDialog"
+          >
+            キャンセル</button
+          ><button class="button primary" type="submit">保存する</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog
+      id="automationPreviewDialog"
+      aria-labelledby="automationPreviewTitle"
+    >
+      <div class="dialog-body">
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="automationPreviewDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <p class="eyebrow">SAFE PREVIEW</p>
+        <h2 id="automationPreviewTitle">実行内容を確認</h2>
+        <p id="automationPreviewSummary"></p>
+        <div id="automationPreviewList" class="stack-list"></div>
+        <p class="hint">
+          既存ファイルは上書きしません。同名の場合は連番を付けます。作成後に編集していなければ履歴からUndoできます。
+        </p>
+        <div class="dialog-actions">
+          <button
+            class="button ghost"
+            type="button"
+            data-close="automationPreviewDialog"
+          >
+            キャンセル</button
+          ><button
+            class="button primary"
+            type="button"
+            id="automationRunButton"
+          >
+            この内容で実行
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="settingsDialog" aria-labelledby="settingsTitle">
+      <form id="settingsForm" class="dialog-body wide-form">
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="settingsDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <p class="eyebrow">LOCAL-FIRST SETTINGS</p>
+        <h2 id="settingsTitle">PerfectWork設定</h2>
+        <div class="settings-grid">
+          <label><span>表示名</span><input name="name" maxlength="80" /></label
+          ><label
+            ><span>アクセント</span
+            ><select name="accent">
+              <option value="violet">Violet</option>
+              <option value="cyan">Cyan</option>
+              <option value="lime">Lime</option>
+              <option value="sunset">Sunset</option>
+            </select></label
+          >
+          <label class="full"
+            ><span>検索対象フォルダ（1行に1つ）</span
+            ><textarea name="searchRoots" rows="5" required></textarea
+            ><small
+              >PDF、Word、Markdown、コードなどを名前と内容から検索します。リンク先は追跡しません。</small
+            ></label
+          >
+          <label class="full"
+            ><span>自動化の保存先</span
+            ><input name="writeRoot" required /><small
+              >自動化はこのフォルダの内側にだけファイルを作ります。</small
+            ></label
+          >
+          <label
+            ><span>検索する最大ファイル数</span
+            ><input
+              name="searchMaxFiles"
+              type="number"
+              min="100"
+              max="100000" /></label
+          ><label
+            ><span>巨大ファイル判定（MB）</span
+            ><input
+              name="healthLargeFileMB"
+              type="number"
+              min="1"
+              max="10240" /></label
+          ><label
+            ><span>古いファイル判定（日）</span
+            ><input name="healthStaleDays" type="number" min="1" max="3650"
+          /></label>
+        </div>
+        <div class="dialog-actions split">
+          <button class="button ghost" type="button" id="exportDataButton">
+            全データを書き出す</button
+          ><span></span
+          ><button
+            class="button ghost"
+            type="button"
+            data-close="settingsDialog"
+          >
+            キャンセル</button
+          ><button class="button primary" type="submit">保存する</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog
+      id="commandDialog"
+      class="command-dialog"
+      aria-label="コマンドパレット"
+    >
+      <div class="command-box">
+        <label
+          ><span>⌕</span
+          ><input
+            id="commandInput"
+            autocomplete="off"
+            placeholder="検索またはコマンドを入力…"
+            aria-label="コマンド検索"
+          /><kbd>Esc</kbd></label
+        >
+        <div id="commandResults" class="command-results"></div>
+        <p class="command-hint">
+          ↑↓で移動 · Enterで実行 · Ctrl Kでいつでも開く
+        </p>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="loading" id="loading" role="status" aria-live="polite">
+      <span></span>
+      <p>考えています…</p>
+    </div>
+    <dialog id="focusDialog" aria-labelledby="focusTitle">
+      <div class="dialog-body">
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="focusDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <p class="eyebrow">ONE THING AT A TIME</p>
+        <h2 id="focusTitle">集中する時間をつくる</h2>
+        <div id="focusContents"></div>
+      </div>
+    </dialog>
+    <dialog id="goalDialog" aria-labelledby="goalTitle">
+      <form id="goalForm" class="dialog-body">
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="goalDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <p class="eyebrow">YOUR NORTH STAR</p>
+        <h2 id="goalTitle">今日、ひとつ進めるなら？</h2>
+        <label
+          ><span>今日のいちばん大切なこと</span
+          ><input
+            name="dailyFocus"
+            maxlength="240"
+            placeholder="例：新しいサービスの試作品を完成させる"
+            required
+        /></label>
+        <div class="dialog-actions">
+          <button class="button primary" type="submit">今日の目標にする</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="projectDetailDialog" aria-labelledby="projectDetailTitle">
+      <div class="dialog-body">
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="projectDetailDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <div id="projectDetail"></div>
+      </div>
+    </dialog>
+    <dialog id="templateDialog" aria-labelledby="templateTitle">
+      <div class="dialog-body">
+        <button
+          class="dialog-close"
+          type="button"
+          data-close="templateDialog"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+        <div id="templateContents"></div>
+      </div>
+    </dialog>
+    <script src="/app.js"></script>
+    <script src="/experience.js"></script>
+  </body>
 </html>
