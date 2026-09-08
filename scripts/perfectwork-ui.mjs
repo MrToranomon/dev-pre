@@ -11,6 +11,10 @@ const root = await fs.mkdtemp(path.join(os.tmpdir(), "perfectwork-ui-"));
 const files = path.join(root, "files"),
   data = path.join(root, "data");
 await fs.mkdir(files);
+const storageSelection = path.join(root, 'storage-selection');
+await fs.mkdir(storageSelection);
+await fs.mkdir(path.join(storageSelection,'large-folder'));
+await fs.writeFile(path.join(storageSelection,'large-folder','payload.bin'), Buffer.alloc(2048));
 const store = await new WorkspaceStore(data).init();
 await store.updateSettings({
   searchRoots: [files],
@@ -171,7 +175,7 @@ try {
     await evaluate(
       `document.querySelector(${JSON.stringify(selector)}).requestSubmit()`,
     );
-    await waitFor(closed || "document.querySelector('#loading').hidden");
+    await waitFor(closed || "document.documentElement.dataset.busy !== 'true'");
   };
   const check = async (name, action) => {
     await action();
@@ -193,12 +197,12 @@ try {
   });
   await command("Page.navigate", { url: appUrl });
   await waitFor(
-    "document.querySelector('.home-hero') && document.querySelector('#loading').hidden",
+    "document.querySelector('.home-summary') && document.documentElement.dataset.busy !== 'true'",
   );
-  await check("空のホームと初回ガイド", async () => {
+  await check("空のホームにタスクと目標を表示", async () => {
     assert.equal(
       await evaluate("document.querySelectorAll('.getting-started').length"),
-      1,
+      0,
     );
   });
   await check("全11画面が描画できる", async () => {
@@ -290,7 +294,7 @@ try {
     await set("#habitForm [name=name]", "10分読書");
     await submit(
       "#habitForm",
-      "state.habits.length===1 && document.querySelector('#loading').hidden",
+      "state.habits.length===1 && document.documentElement.dataset.busy !== 'true'",
     );
     await click(`.habit-check[data-date="${localDay()}"]`);
     await waitFor("state.habits[0].days.length===1");
@@ -321,7 +325,7 @@ try {
     await waitFor("Boolean(state.computed.activeSession.pausedAt)");
     await click("[data-action=pause-focus]");
     await waitFor(
-      "!state.computed.activeSession.pausedAt && document.querySelector('#loading').hidden",
+      "!state.computed.activeSession.pausedAt && document.documentElement.dataset.busy !== 'true'",
     );
     assert.equal(
       await evaluate(
@@ -355,7 +359,7 @@ try {
   await check("目標と設定の保存", async () => {
     await click("#navigation [data-view=today]");
     await click("[data-action=edit-focus]");
-    await set("#goalForm [name=dailyFocus]", "新しい挑戦を、一歩前へ。");
+    await set("#goalForm [name=dailyFocus]", "仕様書を確認する");
     await submit("#goalForm", "!document.querySelector('#goalDialog').open");
     await click("#settingsButton");
     await set("#settingsForm [name=name]", "Tora");
@@ -389,7 +393,7 @@ try {
     );
     await click("[data-action=preview-automation]");
     await waitFor(
-      "document.querySelector('#automationPreviewDialog').open && document.querySelector('#loading').hidden",
+      "document.querySelector('#automationPreviewDialog').open && document.documentElement.dataset.busy !== 'true'",
     );
     await click("#automationRunButton");
     await waitFor("!document.querySelector('#automationPreviewDialog').open");
@@ -398,7 +402,7 @@ try {
   await check("ファイル検索・索引更新", async () => {
     await click("#navigation [data-view=search]");
     await click("[data-action=reindex]");
-    await waitFor("document.querySelector('#loading').hidden");
+    await waitFor("document.documentElement.dataset.busy !== 'true'");
     await set("#pageSearch", "wonderful");
     await evaluate(
       "document.querySelector('#pageSearch').dispatchEvent(new Event('input',{bubbles:true}))",
@@ -441,7 +445,7 @@ try {
     await click("#navigation [data-view=habits]");
     await command("Page.reload");
     await waitFor(
-      "document.querySelector('.habit-table') && document.querySelector('#loading').hidden",
+      "document.querySelector('.habit-table') && document.documentElement.dataset.busy !== 'true'",
     );
     assert.ok(
       await evaluate(
@@ -449,22 +453,117 @@ try {
       ),
     );
   });
+  await check("画面移動で絞り込み・スクロールを復元し、戻る操作もできる", async () => {
+    await evaluate("navigate('tasks'); currentFilter='open'; render(); window.scrollTo(0,180); window.__savedY=scrollY;");
+    await evaluate("navigate('inbox'); navigate('tasks');");
+    assert.equal(await evaluate("currentFilter"), 'open');
+    assert.equal(await evaluate("scrollY"), await evaluate("window.__savedY"));
+    await evaluate("history.back()");
+    await waitFor("currentView==='inbox'");
+    await evaluate("history.forward()");
+    await waitFor("currentView==='tasks'");
+  });
+  await check("日本語変換中は検索欄を作り直さない", async () => {
+    await evaluate(`window.__imeInput=document.querySelector('#taskQuery'); __imeInput.focus(); __imeInput.value='検証'; __imeInput.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true}));`);
+    await delay(220);
+    assert.equal(await evaluate("document.querySelector('#taskQuery')===window.__imeInput"), true);
+    await evaluate("__imeInput.value=''; __imeInput.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));");
+    await delay(220);
+  });
+  await check("タスクを直接追加し、連続入力できる", async () => {
+    await evaluate("navigate('today')");
+    await set('#quickTaskTitle', '直接追加テスト');
+    await submit('#quickTaskForm');
+    await waitFor("state.tasks.some(t=>t.title==='直接追加テスト') && document.querySelector('#quickTaskTitle').value===''");
+    assert.equal(await evaluate("state.tasks.find(t=>t.title==='直接追加テスト').scheduledDate"), await evaluate('state.computed.today'));
+    assert.equal(await evaluate("document.activeElement.id"), 'quickTaskTitle');
+  });
+  await check("保存中も画面移動でき、別画面の下書きを保つ", async () => {
+    await set('#quickTaskTitle', '未送信の下書き');
+    await evaluate(`window.__originalFetch=window.fetch; window.fetch=async (url,options)=>{if(String(url).includes('/api/task/create')) await new Promise(r=>setTimeout(r,350)); return __originalFetch(url,options);}; window.__pendingSave=mutate('/api/task/create',{title:'遅延保存テスト'}); navigate('tasks');`);
+    assert.equal(await evaluate("document.querySelector('#loading').hidden"), true);
+    assert.equal(await evaluate('currentView'), 'tasks');
+    await set('#quickTaskTitle', 'タスク画面の下書き');
+    await evaluate("window.__pendingSave.then(() => { window.fetch=window.__originalFetch; })");
+    assert.equal(await evaluate("document.querySelector('#quickTaskTitle').value"), 'タスク画面の下書き');
+    await evaluate("navigate('today')");
+    assert.equal(await evaluate("document.querySelector('#quickTaskTitle').value"), '未送信の下書き');
+    await evaluate("quickTaskDrafts.clear(); document.querySelector('#quickTaskTitle').value='';");
+  });
+  await check("一括入力のプレビュー・検証・下書き保持・保存", async () => {
+    await click('[data-action=batch-tasks]');
+    assert.equal(await evaluate("document.querySelector('#saveBatchTasks').disabled"), true);
+    await set('#batchTaskInput', '- [ ] 一括タスクA\n2. 一括タスクB\n\n');
+    await evaluate("document.querySelector('#batchTaskInput').dispatchEvent(new Event('input',{bubbles:true}))");
+    assert.deepEqual(await evaluate("bulkTaskTitles(document.querySelector('#batchTaskInput').value)"), ['一括タスクA', '一括タスクB']);
+    assert.equal(await evaluate("document.querySelectorAll('#batchTaskPreview li').length"), 2);
+    await click('#closeBatchTasks');
+    await click('[data-action=batch-tasks]');
+    assert.ok(await evaluate("document.querySelector('#batchTaskInput').value.includes('一括タスクA')"));
+    await submit('#batchTaskForm', "!document.querySelector('#batchTaskDialog').open");
+    assert.equal(await evaluate("state.tasks.filter(t=>t.title.startsWith('一括タスク')).length"), 2);
+    assert.equal(await evaluate("state.tasks.find(t=>t.title==='一括タスクA').scheduledDate"), await evaluate('state.computed.today'));
+  });
+  await check("時間候補は将来・保留プロジェクトを除き、見積時間を集中に渡す", async () => {
+    await evaluate(`window.__originalTasks=state.tasks; window.__originalProjects=state.projects; state.projects=[{id:'paused',status:'paused'}]; state.tasks=[{id:'short',title:'短い仕事',status:'todo',estimateMinutes:10},{id:'long',title:'長い仕事',status:'todo',estimateMinutes:60},{id:'future',title:'将来の仕事',status:'todo',estimateMinutes:5,scheduledDate:'2099-01-01'},{id:'paused-task',title:'保留中',status:'todo',estimateMinutes:5,projectId:'paused'}]; availableMinutes=15; render();`);
+    assert.deepEqual(await evaluate('timeCandidates().map(t=>t.id)'), ['short']);
+    await click('[data-action=start-candidate]');
+    assert.equal(await evaluate("document.querySelector('#startFocusForm [name=plannedMinutes]').value"), '10');
+    await evaluate("document.querySelector('#focusDialog').close(); state.tasks=window.__originalTasks; state.projects=window.__originalProjects; availableMinutes=30; render();");
+  });
   const capture = async (name) => {
     const shot = await command("Page.captureScreenshot", { format: "png" });
     await fs.writeFile(path.join(root, name), Buffer.from(shot.data, "base64"));
   };
+  await check("集中タイマーは1分単位・プリセット・不正値検証に対応", async () => {
+    await evaluate('showFocus()');
+    assert.equal(await evaluate("document.querySelector('#startFocusForm [name=plannedMinutes]').type"), 'number');
+    await set('#startFocusForm [name=plannedMinutes]', '1.5');
+    assert.equal(await evaluate("document.querySelector('#startFocusForm').checkValidity()"), false);
+    await click('[data-action=focus-preset][data-minutes="50"]');
+    assert.equal(await evaluate("document.querySelector('#startFocusForm [name=plannedMinutes]').value"), '50');
+    await set('#startFocusForm [name=plannedMinutes]', '37');
+    await capture('timer-minutes.png');
+    await submit('#startFocusForm', "Boolean(document.querySelector('#finishFocusForm'))");
+    assert.equal(await evaluate('state.computed.activeSession.plannedMinutes'),37);
+    await submit('#finishFocusForm', "!document.querySelector('#focusDialog').open");
+  });
+  await check("ファイル診断は自動集計し、フォルダ選択を検索と独立して保存", async () => {
+    await evaluate("navigate('health')");
+    await waitFor('Boolean(storageData) && !storageBusy');
+    assert.equal(await evaluate('storageData.volumes.length'),1);
+    assert.ok(await evaluate("document.querySelector('.storage-overview').textContent.includes('ストレージ使用率')"));
+    await click('[data-action=storage-folders]');
+    await evaluate("document.querySelectorAll('#storageFolderChoices input').forEach(input=>input.checked=false)");
+    await set('#storageFolderPaths',storageSelection);
+    await submit('#storageFoldersForm', "!document.querySelector('#storageFoldersDialog').open");
+    await waitFor('Boolean(storageData) && !storageBusy');
+    assert.deepEqual(await evaluate('state.settings.healthRoots'),[storageSelection]);
+    assert.deepEqual(await evaluate('state.settings.searchRoots'),[files]);
+    assert.equal(await evaluate('storageData.ranking[0].bytes'),2048);
+    await capture('storage-desktop.png');
+    await command('Page.reload');
+    await waitFor("typeof currentView !== 'undefined' && typeof storageData !== 'undefined' && currentView==='health' && Boolean(storageData) && !storageBusy");
+    assert.deepEqual(await evaluate('state.settings.healthRoots'),[storageSelection]);
+  });
+  await check("容量更新中も画面移動でき、遅い応答で画面を戻さない", async () => {
+    await evaluate(`window.__storageFetch=window.fetch; window.fetch=async(url,options)=>{if(String(url).startsWith('/api/storage?'))await new Promise(r=>setTimeout(r,350));return __storageFetch(url,options);}; window.__storagePending=loadStorage(true); navigate('tasks');`);
+    assert.equal(await evaluate("document.querySelector('#loading').hidden"),true);
+    await evaluate("window.__storagePending.then(()=>{window.fetch=window.__storageFetch})");
+    assert.equal(await evaluate('currentView'),'tasks');
+  });
   await click("#navigation [data-view=today]");
   await capture("home-desktop.png");
   await check("ダークテーマ切替", async () => {
     await click("#themeButton");
     await waitFor(
-      "document.documentElement.dataset.theme==='dark' && document.querySelector('#loading').hidden",
+      "document.documentElement.dataset.theme==='dark' && document.documentElement.dataset.busy !== 'true'",
     );
     await delay(200); // Let the theme's CSS transition finish before visual review.
     await capture("home-dark.png");
     await click("#themeButton");
     await waitFor(
-      "document.documentElement.dataset.theme==='light' && document.querySelector('#loading').hidden",
+      "document.documentElement.dataset.theme==='light' && document.documentElement.dataset.busy !== 'true'",
     );
   });
   await check("390px幅の全画面でページ全体の横溢れがない", async () => {
@@ -495,6 +594,8 @@ try {
     }
     await evaluate("navigate('today')");
     await capture("home-mobile.png");
+    await evaluate("navigate('health')");
+    await capture('storage-mobile.png');
   });
   errors.push(...(await evaluate("window.__uiUnhandled")));
   assert.deepEqual(errors, [], "ブラウザのエラー");

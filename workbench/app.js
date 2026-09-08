@@ -18,17 +18,17 @@ let commandFiles = [];
 let commandChoices = [];
 
 const titles = {
-  today: ["YOUR PERSONAL WORKSPACE", "ホーム"],
-  search: ["FIND YOUR KNOWLEDGE", "ファイル検索"],
-  inbox: ["IDEAS WORTH KEEPING", "メモ・アイデア"],
-  tasks: ["NEXT ACTIONS", "タスク"],
-  projects: ["MISSION CONTROL", "プロジェクト"],
-  worklog: ["PROGRESS, REMEMBERED", "振り返り"],
-  automations: ["WORK ON AUTOPILOT", "自動化"],
-  health: ["WORKSPACE HEALTH", "ファイル診断"],
-  planner: ["MAKE SPACE FOR WHAT MATTERS", "週間プラン"],
-  habits: ["SMALL STEPS, EVERY DAY", "習慣"],
-  library: ["A LITTLE INSPIRATION", "はじめ方・テンプレート"],
+  today: "ホーム",
+  search: "ファイル検索",
+  inbox: "メモ・アイデア",
+  tasks: "タスク",
+  projects: "プロジェクト",
+  worklog: "振り返り",
+  automations: "自動化",
+  health: "ファイル診断",
+  planner: "週間プラン",
+  habits: "習慣",
+  library: "テンプレート・使い方",
 };
 const statusLabels = {
   todo: "未着手",
@@ -108,7 +108,7 @@ function projectName(id) {
   return state.projects.find((project) => project.id === id)?.name ?? "";
 }
 function empty(icon, title, copy, button = "") {
-  return `<div class="empty"><span>${icon}</span><strong>${escapeHtml(title)}</strong><p>${escapeHtml(copy)}</p>${button}</div>`;
+  return `<div class="empty">${icon ? `<span aria-hidden="true">${icon}</span>` : ""}<strong>${escapeHtml(title)}</strong>${copy ? `<p>${escapeHtml(copy)}</p>` : ""}${button}</div>`;
 }
 function tagsHtml(tags = []) {
   return tags
@@ -128,11 +128,7 @@ function toast(message, isError = false) {
   toastTimer = setTimeout(() => element.classList.remove("visible"), 4200);
 }
 function loading(active) {
-  $("#loading").hidden = !active;
-  document.querySelector(".app")?.toggleAttribute("inert", active);
-  document
-    .querySelectorAll("dialog")
-    .forEach((dialog) => dialog.toggleAttribute("inert", active));
+  setBusy(active);
 }
 
 async function request(route, options = {}) {
@@ -148,7 +144,7 @@ async function request(route, options = {}) {
     });
   } catch {
     throw new Error(
-      "PerfectWorkに接続できません。アプリを開き直してください。",
+      "TigerGateに接続できません。アプリを開き直してください。",
     );
   }
   const type = response.headers.get("content-type") ?? "";
@@ -159,7 +155,14 @@ async function request(route, options = {}) {
   return data;
 }
 async function mutate(route, data, success) {
+  const key = `${route}:${data?.id || "new"}`;
+  if (pendingMutations.has(key)) return null;
+  pendingMutations.add(key);
   loading(true);
+  const previous = mutationQueue;
+  let finishMutation;
+  mutationQueue = new Promise(resolve => { finishMutation = resolve; });
+  await previous;
   $("#errorBanner").hidden = true;
   try {
     const response = await request(route, {
@@ -173,11 +176,14 @@ async function mutate(route, data, success) {
     if (success) toast(success);
     return response;
   } catch (error) {
+    render();
     $("#errorBanner").textContent = error.message;
     $("#errorBanner").hidden = false;
     toast(error.message, true);
     return null;
   } finally {
+    finishMutation();
+    pendingMutations.delete(key);
     loading(false);
   }
 }
@@ -193,15 +199,14 @@ function download(name, contents, type = "text/plain;charset=utf-8") {
 }
 
 function renderHeader() {
-  const [eyebrow, title] = titles[currentView];
-  $("#viewEyebrow").textContent = eyebrow;
+  const title = titles[currentView];
   $("#viewTitle").textContent = title;
   $("#navInbox").textContent = state.computed.openInbox;
   $("#navTasks").textContent = state.computed.openTasks;
   $("#navProjects").textContent = state.computed.activeProjects;
   document.documentElement.dataset.accent = state.profile.accent;
   document.documentElement.dataset.theme = state.profile.theme || "light";
-  $("#profileButton").textContent = (state.profile.name || "PW")
+  $("#profileButton").textContent = (state.profile.name || "TG")
     .slice(0, 2)
     .toUpperCase();
   document.querySelectorAll("#navigation [data-view]").forEach((button) => {
@@ -212,7 +217,7 @@ function renderHeader() {
   });
   const session = state.computed.activeSession;
   $("#focusButton").classList.toggle("running", Boolean(session));
-  $("#focusLabel").textContent = session ? session.title : "フォーカスを開始";
+  $("#focusLabel").textContent = session ? session.title : "集中タイマー";
 }
 
 function projectCard(project) {
@@ -220,7 +225,7 @@ function projectCard(project) {
     (task) => task.projectId === project.id && task.status !== "archived",
   );
   const done = tasks.filter((task) => task.status === "done").length;
-  return `<article class="project-card" style="--project-color:${escapeHtml(project.color)}"><div class="inline-actions">${status(project.status)}${project.dueDate ? `<span class="tag">期限 ${formatDate(project.dueDate)}</span>` : ""}</div><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.description || "このプロジェクトで叶えたいことを書いてみましょう。")}</p><progress max="${Math.max(1, tasks.length)}" value="${done}" aria-label="タスク完了率"></progress><div class="project-meta"><span>${done}/${tasks.length} タスク完了</span><span>全体進捗 ${project.progress}%</span></div><div class="inline-actions detail-heading"><button class="button primary small" data-action="project-detail" data-id="${project.id}">ワークスペースを開く ↗</button><button class="button ghost small" data-action="edit-project" data-id="${project.id}">編集</button>${project.folder ? `<button class="button text small" data-action="open-path" data-path="${encodeURIComponent(project.folder)}">フォルダ ↗</button>` : ""}</div></article>`;
+  return `<article class="project-card" style="--project-color:${escapeHtml(project.color)}"><div class="inline-actions">${status(project.status)}${project.dueDate ? `<span class="tag">期限 ${formatDate(project.dueDate)}</span>` : ""}</div><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.description || "説明なし")}</p><progress max="${Math.max(1, tasks.length)}" value="${done}" aria-label="タスク完了率"></progress><div class="project-meta"><span>${done}/${tasks.length} タスク完了</span><span>全体進捗 ${project.progress}%</span></div><div class="inline-actions detail-heading"><button class="button primary small" data-action="project-detail" data-id="${project.id}">詳細</button><button class="button ghost small" data-action="edit-project" data-id="${project.id}">編集</button>${project.folder ? `<button class="button text small" data-action="open-path" data-path="${encodeURIComponent(project.folder)}">フォルダ</button>` : ""}</div></article>`;
 }
 
 function renderProjects() {
@@ -229,16 +234,16 @@ function renderProjects() {
       ? project.status !== "archived"
       : project.status === currentFilter,
   );
-  view.innerHTML = `<div class="toolbar"><div class="filters"><button data-action="filter" data-filter="active" class="${currentFilter === "active" ? "active" : ""}">進行中</button><button data-action="filter" data-filter="paused" class="${currentFilter === "paused" ? "active" : ""}">保留</button><button data-action="filter" data-filter="completed" class="${currentFilter === "completed" ? "active" : ""}">完了</button><button data-action="filter" data-filter="all" class="${currentFilter === "all" ? "active" : ""}">すべて</button><button data-action="filter" data-filter="archived" class="${currentFilter === "archived" ? "active" : ""}">保管</button></div><div class="section-actions"><button class="button ghost" data-action="project-diagnostics">Git状況を更新</button><button class="button primary" data-action="new-project">＋ プロジェクト</button></div></div>${
+  view.innerHTML = `<div class="toolbar"><div class="filters"><button data-action="filter" data-filter="active" class="${currentFilter === "active" ? "active" : ""}">進行中</button><button data-action="filter" data-filter="paused" class="${currentFilter === "paused" ? "active" : ""}">保留</button><button data-action="filter" data-filter="completed" class="${currentFilter === "completed" ? "active" : ""}">完了</button><button data-action="filter" data-filter="all" class="${currentFilter === "all" ? "active" : ""}">すべて</button><button data-action="filter" data-filter="archived" class="${currentFilter === "archived" ? "active" : ""}">保管</button></div><div class="section-actions"><button class="button ghost" data-action="project-diagnostics">Git状況を更新</button><button class="button primary" data-action="new-project">プロジェクトを追加</button></div></div>${
     projectHealth
-      ? `<section class="panel" style="margin-bottom:16px"><div class="panel-heading"><div><h3>プロジェクト・パルス</h3><p>登録フォルダとGitの現在地です。</p></div></div><div class="stack-list">${projectHealth
+      ? `<section class="panel" style="margin-bottom:16px"><div class="panel-heading"><div><h3>フォルダ・Git状況</h3><p>登録フォルダとGitの状態を確認できます。</p></div></div><div class="stack-list">${projectHealth
           .map((item) => {
             const project = state.projects.find((p) => p.id === item.projectId);
             return `<div class="list-item"><span class="item-icon">${item.exists ? "⌘" : "!"}</span><div><strong>${escapeHtml(project?.name)}</strong><p>${!item.exists ? "登録フォルダが見つかりません" : item.git ? `${escapeHtml(item.git.branch || "detached")} · 変更 ${item.git.changedFiles}件${item.git.lastCommit ? ` · ${item.git.lastCommit.hash} ${escapeHtml(item.git.lastCommit.message)}` : ""}` : "Git未使用"}</p><small class="path">${escapeHtml(item.folder)}</small></div></div>`;
           })
           .join("")}</div></section>`
       : ""
-  }<div class="project-grid">${projects.length ? projects.map(projectCard).join("") : empty("◇", "プロジェクトはありません", "ゴール、進捗、フォルダ、タスク、作業ログを一つにつなげます。", '<button class="button primary small" data-action="new-project">最初のプロジェクトを作る</button>')}</div>`;
+  }<div class="project-grid">${projects.length ? projects.map(projectCard).join("") : empty("◇", "プロジェクトはありません", "", '<button class="button primary small" data-action="new-project">プロジェクトを追加</button>')}</div>`;
 }
 
 function renderWorklog() {
@@ -251,7 +256,7 @@ function renderWorklog() {
           .slice(0, 10),
   );
   const max = Math.max(1, ...state.insights.days.map((day) => day.minutes));
-  view.innerHTML = `<div class="metric-strip"><article class="metric-card"><span>過去14日</span><strong>${formatMinutes(state.insights.totalMinutes)}</strong><small>集中と手動記録</small></article><article class="metric-card"><span>完了タスク</span><strong>${state.insights.completedTasks}</strong><small>過去14日</small></article><article class="metric-card"><span>継続</span><strong>${state.insights.streak}日</strong><small>成果を記録した日</small></article><article class="metric-card"><span>過去7日</span><strong>${formatMinutes(state.computed.focusWeek)}</strong><small>集中セッション</small></article></div><div class="section-grid"><section class="panel"><div class="panel-heading"><div><h3>作業の記録</h3><p>「やったこと」が消えず、振り返りと日報になります。</p></div><div class="section-actions"><button class="button ghost small" data-action="export-worklog">Markdown出力</button><button class="button primary small" data-action="new-worklog">＋ 記録</button></div></div><div class="stack-list">${
+  view.innerHTML = `<div class="metric-strip"><article class="metric-card"><span>過去14日</span><strong>${formatMinutes(state.insights.totalMinutes)}</strong><small>集中と手動記録</small></article><article class="metric-card"><span>完了タスク</span><strong>${state.insights.completedTasks}</strong><small>過去14日</small></article><article class="metric-card"><span>継続</span><strong>${state.insights.streak}日</strong><small>成果を記録した日</small></article><article class="metric-card"><span>過去7日</span><strong>${formatMinutes(state.computed.focusWeek)}</strong><small>集中セッション</small></article></div><div class="section-grid"><section class="panel"><div class="panel-heading"><div><h3>作業の記録</h3><p>作業時間と内容を記録します。</p></div><div class="section-actions"><button class="button ghost small" data-action="export-worklog">Markdown出力</button><button class="button primary small" data-action="new-worklog">記録</button></div></div><div class="stack-list">${
     logs.length
       ? logs
           .slice(0, 100)
@@ -265,16 +270,16 @@ function renderWorklog() {
           "まだ作業ログがありません",
           "集中セッションを完了するか、成果を手動で記録してください。",
         )
-  }</div></section><section class="panel"><div class="panel-heading"><div><h3>集中のリズム</h3><p>過去14日</p></div></div><div class="chart">${state.insights.days.map((day, index) => `<i class="chart-bar" style="--height:${Math.max(4, (day.minutes / max) * 100)}%" data-label="${index % 2 === 0 ? day.date.slice(5).replace("-", "/") : ""}" title="${day.minutes}分"></i>`).join("")}</div></section></div>`;
+  }</div></section><section class="panel"><div class="panel-heading"><div><h3>集中時間</h3><p>過去14日</p></div></div><div class="chart">${state.insights.days.map((day, index) => `<i class="chart-bar" style="--height:${Math.max(4, (day.minutes / max) * 100)}%" data-label="${index % 2 === 0 ? day.date.slice(5).replace("-", "/") : ""}" title="${day.minutes}分"></i>`).join("")}</div></section></div>`;
 }
 
 function renderAutomations() {
-  view.innerHTML = `<div class="toolbar"><p style="color:var(--muted);margin:0">手動実行はプレビューで確認。自動実行は、有効にしたスケジュールで動きます。</p><button class="button primary" data-action="new-automation">＋ 自動化</button></div><div class="section-grid"><section class="panel"><div class="panel-heading"><div><h3>オートパイロット</h3><p>繰り返す整理や記録を、決めた手順で実行します。</p></div></div><div class="stack-list">${state.automations.map((auto) => `<article class="list-item"><span class="item-icon">⌁</span><div><strong>${escapeHtml(auto.name)}</strong><p>${escapeHtml(auto.description || actionLabels[auto.action])}</p><small>${escapeHtml(actionLabels[auto.action])} · ${escapeHtml(statusLabels[auto.trigger] ?? auto.trigger)}${auto.lastRunAt ? ` · 最終実行 ${relativeTime(auto.lastRunAt)}` : ""}</small></div><div class="item-actions"><label class="automation-status"><input class="toggle" type="checkbox" data-action="toggle-automation" data-id="${auto.id}" ${auto.enabled ? "checked" : ""} aria-label="${escapeHtml(auto.name)}の自動実行"></label><button class="icon-button" data-action="edit-automation" data-id="${auto.id}">編集</button><button class="button primary small" data-action="preview-automation" data-id="${auto.id}">プレビュー</button></div></article>`).join("")}</div></section><section class="panel"><div class="panel-heading"><div><h3>実行履歴</h3><p>直近の自動化は安全に取り消せます。</p></div></div><div class="stack-list">${
+  view.innerHTML = `<div class="toolbar"><p style="color:var(--muted);margin:0">手動実行はプレビューで確認。自動実行は、有効にしたスケジュールで動きます。</p><button class="button primary" data-action="new-automation">自動化を追加</button></div><div class="section-grid"><section class="panel"><div class="panel-heading"><div><h3>登録済みの自動化</h3><p>繰り返す整理や記録を、決めた手順で実行します。</p></div></div><div class="stack-list">${state.automations.map((auto) => `<article class="list-item"><span class="item-icon">⌁</span><div><strong>${escapeHtml(auto.name)}</strong><p>${escapeHtml(auto.description || actionLabels[auto.action])}</p><small>${escapeHtml(actionLabels[auto.action])} · ${escapeHtml(statusLabels[auto.trigger] ?? auto.trigger)}${auto.lastRunAt ? ` · 最終実行 ${relativeTime(auto.lastRunAt)}` : ""}</small></div><div class="item-actions"><label class="automation-status"><input class="toggle" type="checkbox" data-action="toggle-automation" data-id="${auto.id}" ${auto.enabled ? "checked" : ""} aria-label="${escapeHtml(auto.name)}の自動実行"></label><button class="icon-button" data-action="edit-automation" data-id="${auto.id}">編集</button><button class="button primary small" data-action="preview-automation" data-id="${auto.id}">プレビュー</button></div></article>`).join("")}</div></section><section class="panel"><div class="panel-heading"><div><h3>実行履歴</h3><p>直近の自動化は安全に取り消せます。</p></div></div><div class="stack-list">${
     state.automationRuns
       .slice(0, 12)
       .map(
         (run) =>
-          `<article class="list-item"><span class="item-icon">${run.status === "completed" ? "✓" : run.status === "failed" ? "!" : "↶"}</span><div><strong>${escapeHtml(run.name)}</strong><p>${run.error ? escapeHtml(run.error) : `${run.operations?.length ?? 0}件の操作`}</p><small>${relativeTime(run.createdAt)} · ${status(run.status)}</small></div>${run.status === "completed" ? `<button class="icon-button" data-action="undo-automation" data-id="${run.id}">Undo</button>` : ""}</article>`,
+          `<article class="list-item"><span class="item-icon">${run.status === "completed" ? "✓" : run.status === "failed" ? "!" : "↶"}</span><div><strong>${escapeHtml(run.name)}</strong><p>${run.error ? escapeHtml(run.error) : `${run.operations?.length ?? 0}件の操作`}</p><small>${relativeTime(run.createdAt)} · ${status(run.status)}</small></div>${run.status === "completed" ? `<button class="icon-button" data-action="undo-automation" data-id="${run.id}">取り消す</button>` : ""}</article>`,
       )
       .join("") ||
     empty(
@@ -285,28 +290,21 @@ function renderAutomations() {
   }</div></section></div>`;
 }
 
-function renderHealth() {
+function renderHealthDetails() {
   if (!health) {
-    view.innerHTML = `<section class="panel">${empty("◉", "PCの状態をスキャンします", "検索対象フォルダの容量、巨大・古い・重複ファイルを読み取り専用で調べます。削除は行いません。", '<button class="button primary" data-action="scan-health">スキャンを開始</button>')}</section>`;
+    view.innerHTML = `<section class="panel health-detail-start"><div><h3>詳細診断</h3><p class="hint">重複・巨大ファイル・長期間更新されていないファイルを確認します。</p></div><button class="button ghost" data-action="scan-health">詳細診断を開始</button></section>`;
     return;
   }
   const issues =
     health.largest.length +
     health.duplicateGroups.length +
     health.errors.length;
-  view.innerHTML = `<div class="toolbar"><p style="color:var(--muted);margin:0">${formatDate(health.scannedAt, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${health.files}ファイルを確認</p><button class="button ghost" data-action="scan-health">再スキャン</button></div><div class="metric-strip"><article class="metric-card"><span>スキャン範囲</span><strong>${health.files}件</strong><small>${health.limited ? "上限に到達・一部を確認" : "登録フォルダ内を確認"} · ファイルの削除なし</small></article><article class="metric-card"><span>確認容量</span><strong>${formatBytes(health.bytes)}</strong><small>${health.files}ファイル</small></article><article class="metric-card"><span>重複候補</span><strong>${health.duplicateGroups.length}</strong><small>${formatBytes(health.duplicateBytes)}を節約可能</small></article><article class="metric-card"><span>巨大ファイル</span><strong>${health.largest.length}</strong><small>${formatBytes(state.settings.healthLargeFileBytes)}以上</small></article></div><div class="section-grid"><section class="panel"><div class="panel-heading"><div><h3>ドライブ容量</h3><p>検索対象があるボリュームの空き容量です。</p></div></div>${health.volumes
-    .map((volume) => {
-      const used = volume.total - volume.free;
-      return `<div class="volume"><div class="progress-label"><span class="path">${escapeHtml(volume.root)}</span><strong>空き ${formatBytes(volume.free)}</strong></div><div class="volume-bar"><i style="width:${Math.min(100, (used / volume.total) * 100)}%"></i></div><small>${formatBytes(used)} / ${formatBytes(volume.total)} 使用</small></div>`;
-    })
-    .join(
-      "",
-    )}</section><section class="panel"><div class="panel-heading"><div><h3>診断サマリー</h3><p>次に確認すると効果が大きい項目です。</p></div></div><div class="health-score"><strong class="${issues ? "health-warn" : "health-good"}">${issues}</strong><div><h3>${issues ? "確認候補があります" : "確認範囲に候補はありません"}</h3><p style="color:var(--muted);margin:0">重複や巨大ファイルは内容を確認してから、エクスプローラーで整理してください。</p></div></div></section></div><div class="section-grid"><section class="panel"><div class="panel-heading"><div><h3>重複ファイル候補</h3><p>サイズとSHA-256が同一のファイルです。</p></div></div><div class="stack-list">${
+  view.innerHTML = `<div class="toolbar"><p style="color:var(--muted);margin:0">${formatDate(health.scannedAt, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${health.files}ファイルを確認</p><button class="button ghost" data-action="scan-health">再スキャン</button></div><div class="metric-strip"><article class="metric-card"><span>スキャン範囲</span><strong>${health.files}件</strong><small>${health.limited ? "上限に到達・一部を確認" : "登録フォルダ内を確認"} · ファイルの削除なし</small></article><article class="metric-card"><span>確認容量</span><strong>${formatBytes(health.bytes)}</strong><small>${health.files}ファイル</small></article><article class="metric-card"><span>重複候補</span><strong>${health.duplicateGroups.length}</strong><small>${formatBytes(health.duplicateBytes)}の重複内容</small></article><article class="metric-card"><span>巨大ファイル</span><strong>${health.largest.length}</strong><small>${formatBytes(state.settings.healthLargeFileBytes)}以上</small></article></div><div class="section-grid"><section class="panel"><div class="panel-heading"><div><h3>重複ファイル候補</h3><p>サイズとSHA-256が同一のファイルです。</p></div></div><div class="stack-list">${
     health.duplicateGroups
       .slice(0, 20)
       .map(
         (group) =>
-          `<article class="list-item"><span class="item-icon">＝</span><div><strong>${group.files.length}個 · ${formatBytes(group.size)}</strong><p>${group.files.map((file) => escapeHtml(file)).join("<br>")}</p><small>${formatBytes(group.recoverableBytes)}を節約可能</small></div></article>`,
+          `<article class="list-item"><span class="item-icon">＝</span><div><strong>${group.files.length}個 · ${formatBytes(group.size)}</strong><p>${group.files.map((file) => escapeHtml(file)).join("<br>")}</p><small>${formatBytes(group.recoverableBytes)}の重複内容</small></div></article>`,
       )
       .join("") ||
     empty(
@@ -350,6 +348,7 @@ function renderHealth() {
 
 function render() {
   if (!state) return;
+  const context = captureViewContext();
   renderHeader();
   if (currentView === "today") renderHome();
   else if (currentView === "search") renderSearch();
@@ -363,18 +362,27 @@ function render() {
   else if (currentView === "library") renderLibrary();
   else renderHealth();
   applyVisualStyles();
+  restoreViewContext(context);
 }
 
-function navigate(name) {
+function navigate(name, fromHistory = false) {
   if (!titles[name]) return;
+  if (name === currentView) {
+    $("#sidebar").classList.remove("open");
+    $("#mobileMenu").setAttribute("aria-expanded", "false");
+    return;
+  }
+  rememberView();
   currentView = name;
-  currentFilter =
-    name === "projects" ? "active" : name === "tasks" ? "all" : "open";
-  history.replaceState(null, "", `#${name}`);
+  currentFilter = viewPositions.get(name)?.filter ??
+    (name === "projects" ? "active" : name === "tasks" ? "all" : "open");
+  if (!fromHistory) history.pushState(null, "", `#${name}`);
   $("#sidebar").classList.remove("open");
   $("#mobileMenu").setAttribute("aria-expanded", "false");
   render();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: viewPositions.get(name)?.scroll ?? 0, behavior: "instant" });
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches)
+    view.animate([{ opacity: 0.65 }, { opacity: 1 }], { duration: 120 });
 }
 document
   .querySelectorAll("#navigation [data-view]")
@@ -408,7 +416,7 @@ document
   );
 $("#captureButton").addEventListener("click", () => {
   $("#captureForm").reset();
-  $("#captureTitle").textContent = "頭の中から、ここへ。";
+  $("#captureTitle").textContent = "メモを追加";
   openDialog("#captureDialog");
   setTimeout(() => $("#captureTitleInput").focus(), 20);
 });
@@ -544,12 +552,12 @@ view.addEventListener("click", async (event) => {
   else if (action === "new-task") {
     $("#taskForm").reset();
     $("#taskDialogTitle").textContent = "タスクを追加";
-    $("#taskForm [type=submit]").textContent = "追加する";
+    $("#taskForm [type=submit]").textContent = "追加";
     fillProjectSelect("#taskProject");
     openDialog("#taskDialog");
   } else if (action === "new-project") {
     $("#projectForm").reset();
-    $("#projectDialogTitle").textContent = "プロジェクトを開始";
+    $("#projectDialogTitle").textContent = "プロジェクトを追加";
     $("#projectForm [name=color]").value = "#8b7cff";
     openDialog("#projectDialog");
   } else if (action === "new-worklog") {
@@ -675,7 +683,10 @@ view.addEventListener("click", async (event) => {
   } else if (action === "scan-health") {
     loading(true);
     try {
-      health = await request("/api/health");
+      const signature = JSON.stringify(state.settings.healthRoots ?? state.settings.searchRoots);
+      const result = await request("/api/health");
+      if (signature !== JSON.stringify(state.settings.healthRoots ?? state.settings.searchRoots)) return;
+      health = result;
       toast(`${health.files}ファイルを診断しました`);
       render();
     } catch (error) {
@@ -905,7 +916,7 @@ async function renderCommands() {
   const query = $("#commandInput").value.trim().toLocaleLowerCase("ja");
   commandChoices = [
     ...commands,
-    ...Object.entries(titles).map(([name, [, label]]) => ({
+    ...Object.entries(titles).map(([name, label]) => ({
       icon: "↗",
       label: `${label}を開く`,
       hint: "画面",
@@ -1083,3 +1094,97 @@ async function start() {
     loading(false);
   }
 }
+
+// Preserve context across small updates; keep navigation available during saves.
+const pendingMutations = new Set();
+let mutationQueue = Promise.resolve();
+const viewPositions = new Map();
+const quickTaskDrafts = new Map();
+let busyDepth = 0;
+let busyTimer;
+let filterTimer;
+
+function setBusy(active) {
+  busyDepth = Math.max(0, busyDepth + (active ? 1 : -1));
+  const busy = busyDepth > 0;
+  document.documentElement.dataset.busy = String(busy);
+  $('#loading').hidden = Boolean(state) || !busy;
+  document.querySelectorAll('dialog[open] button[type=submit]').forEach(button => { button.disabled = busy; });
+  clearTimeout(busyTimer);
+  if (busy) busyTimer = setTimeout(() => document.documentElement.classList.add('is-saving'), 180);
+  else document.documentElement.classList.remove('is-saving');
+}
+function rememberView() {
+  viewPositions.set(currentView, { filter: currentFilter, scroll: window.scrollY });
+}
+function captureViewContext() {
+  const focused = document.activeElement;
+  const key = focused && view.contains(focused) ? {
+    id: focused.id, action: focused.dataset.action, item: focused.dataset.id,
+    index: focused.dataset.index, date: focused.dataset.date, filter: focused.dataset.filter, layout: focused.dataset.layout,
+    start: focused.selectionStart, end: focused.selectionEnd,
+  } : null;
+  const details = [...view.querySelectorAll('.work-card details[open]')].map(el => el.closest('[data-task-id]').dataset.taskId);
+  const quick = $('#quickTaskTitle');
+  if (quick) quickTaskDrafts.set(quick.dataset.view, quick.value);
+  return { key, details, scroll: window.scrollY };
+}
+function restoreViewContext(context) {
+  for (const id of context.details) view.querySelector(`[data-task-id="${CSS.escape(id)}"] details`)?.setAttribute('open', '');
+  const quick = $('#quickTaskTitle');
+  if (quick) quick.value = quickTaskDrafts.get(currentView) || '';
+  if (context.key) {
+    const k = context.key;
+    const found = k.id ? document.getElementById(k.id) : [...view.querySelectorAll('[data-action]')].find(el =>
+      el.dataset.action === k.action && el.dataset.id === k.item && el.dataset.index === k.index && el.dataset.date === k.date && el.dataset.filter === k.filter && el.dataset.layout === k.layout);
+    found?.focus({ preventScroll: true });
+    if (found && k.start != null) { try { found.setSelectionRange(k.start, k.end); } catch {} }
+  }
+  window.scrollTo({ top: context.scroll, behavior: 'instant' });
+  view.querySelectorAll('.filters button').forEach(button => button.setAttribute('aria-pressed', String(button.classList.contains('active'))));
+}
+function bindLiveFilter(selector, update) {
+  const input = $(selector);
+  const schedule = (event) => {
+    update(event.target.value);
+    clearTimeout(filterTimer);
+    if (event.isComposing) return;
+    const name = currentView;
+    filterTimer = setTimeout(() => { if (currentView === name && document.activeElement === input) render(); }, 160);
+  };
+  input.addEventListener('input', schedule);
+  input.addEventListener('compositionend', schedule);
+}
+function quickTaskForm() {
+  return `<form id="quickTaskForm" class="quick-task-form"><input id="quickTaskTitle" data-view="${currentView}" name="title" required maxlength="300" autocomplete="off" aria-label="タスクを直接追加" placeholder="タスクを入力して Enter"><button class="button primary" type="submit">追加</button><button class="button ghost" type="button" data-action="batch-tasks">一括追加</button><button class="button text" type="button" data-action="new-task">詳細入力</button></form>`;
+}
+view.addEventListener('submit', async (event) => {
+  if (event.target.id !== 'quickTaskForm') return;
+  event.preventDefault();
+  const input = $('#quickTaskTitle');
+  const title = input.value.trim();
+  if (!title) return;
+  const origin = currentView;
+  const submit = event.target.querySelector('[type=submit]');
+  submit.disabled = true;
+  const response = await mutate('/api/task/create', { title, ...(origin === 'today' ? { scheduledDate: state.computed.today } : {}), ...(origin === 'tasks' && taskProjectFilter ? { projectId: taskProjectFilter } : {}) }, 'タスクを追加しました');
+  if (response) {
+    // Do not erase a different draft typed while this request was saving.
+    if (quickTaskDrafts.get(origin) === title) quickTaskDrafts.delete(origin);
+    if (currentView === origin && $('#quickTaskTitle')?.value.trim() === title) {
+      $('#quickTaskTitle').value = '';
+      quickTaskDrafts.delete(origin);
+      $('#quickTaskTitle').focus({ preventScroll: true });
+    }
+  }
+  if (currentView === origin) $('#quickTaskForm [type=submit]').disabled = false;
+});
+document.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'n' && !document.querySelector('dialog[open]')) {
+    event.preventDefault(); dispatchViewAction('new-task');
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.isComposing) {
+    const form = document.activeElement?.closest('form');
+    if (form && !form.querySelector('[type=submit]:disabled')) { event.preventDefault(); form.requestSubmit(); }
+  }
+});

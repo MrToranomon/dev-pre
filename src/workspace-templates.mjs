@@ -2,8 +2,8 @@ export const workspaceTemplates = [
   {
     id: "launch",
     icon: "🚀",
-    name: "新しいプロジェクトを形に",
-    description: "アイデアから最初の公開まで。迷わず進める5つのステップ。",
+    name: "プロジェクトの立ち上げ",
+    description: "要件整理、試作、検証、公開のタスクを追加します。",
     color: "#7963dc",
     tasks: [
       "誰のどんな課題を解決するか書く",
@@ -16,8 +16,8 @@ export const workspaceTemplates = [
   {
     id: "learn",
     icon: "🌱",
-    name: "学びを成果につなげる",
-    description: "調べるだけで終わらない。学習からアウトプットまで。",
+    name: "学習計画",
+    description: "目標設定、教材選び、学習、振り返りのタスクを追加します。",
     color: "#36866b",
     tasks: [
       "1週間後にできるようになりたいことを書く",
@@ -30,8 +30,8 @@ export const workspaceTemplates = [
   {
     id: "reset",
     icon: "☀",
-    name: "仕事環境をリセット",
-    description: "頭の中と作業環境を整えて、気持ちよく再スタート。",
+    name: "作業環境の整理",
+    description: "メモ、資料整理、週間予定のタスクを追加します。",
     color: "#c18434",
     tasks: [
       "気になっていることをすべてメモする",

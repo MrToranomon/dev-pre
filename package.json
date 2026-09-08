@@ -1,14 +1,17 @@
 {
-  "name": "perfectwork",
-  "version": "2.3.0",
+  "name": "tigergate",
+  "version": "2.6.0",
+  "main": "desktop/main.cjs",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
   },
   "description": "A local-first personal work OS for focus, knowledge, projects, automation and file health.",
   "scripts": {
-    "start": "node work.mjs",
-    "work": "node work.mjs",
+    "start": "electron .",
+    "work": "electron .",
+    "work:browser": "node work.mjs",
+    "build:desktop": "node scripts/build-desktop.mjs",
     "work:demo": "node scripts/perfectwork-demo.mjs",
     "preview": "node organize.mjs preview",
     "apply": "node organize.mjs apply",
@@ -19,6 +22,8 @@
     "doctor": "node organize.mjs doctor",
     "test": "node --test",
     "test:ui": "node scripts/perfectwork-ui.mjs",
+    "test:desktop": "node scripts/desktop-smoke.mjs",
+    "setup:desktop": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/setup-desktop.ps1",
     "test:postgres": "node scripts/postgres-integration.mjs",
     "setup:postgres": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/setup-postgres.ps1",
     "setup:a5": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/setup-a5.ps1",
@@ -29,5 +34,9 @@
     "mammoth": "^1.12.2",
     "pdfjs-dist": "^6.3.289",
     "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^44.2.0"
   }
 }

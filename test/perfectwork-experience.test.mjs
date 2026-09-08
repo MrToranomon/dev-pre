@@ -243,6 +243,33 @@ test("overlapping search roots do not count the same file twice or invent duplic
   });
   assert.equal(health.files, 1);
   assert.equal(health.duplicateGroups.length, 0);
+  assert.equal(health.folders.length, 2);
+  assert.equal(health.folders.find(folder => folder.root === nested).bytes, 14);
+  assert.equal(health.folders.find(folder => folder.root === files).bytes, 0);
+  assert.equal(health.folders.reduce((sum, folder) => sum + folder.bytes, 0), health.bytes);
+  assert.equal('volumes' in health, false);
+});
+
+test("batch tasks validate atomically and persist order and scheduling", async (t) => {
+  const store = await fixture(t);
+  const before = store.snapshot();
+  for (const input of [
+    { titles: [] }, { titles: ['Valid', ' '] },
+    { titles: Array(51).fill('Too many') }, { titles: ['x'.repeat(301)] },
+    { titles: ['Invalid project'], projectId: 'missing' },
+    { titles: ['Invalid date'], scheduledDate: '2026-02-30' },
+  ]) {
+    await assert.rejects(store.createTaskBatch(input));
+    assert.deepEqual(store.snapshot(), before);
+  }
+  const tasks = await store.createTaskBatch({ titles: [' First ', 'Second'], scheduledDate: '2026-09-09' });
+  assert.deepEqual(tasks.map(task => task.title), ['First', 'Second']);
+  assert.equal(new Set(tasks.map(task => task.id)).size, 2);
+  const reload = await new WorkspaceStore(store.directory).init();
+  assert.deepEqual(reload.data.tasks.slice(0, 2).map(task => task.title), ['First', 'Second']);
+  assert.equal(reload.data.tasks[0].scheduledDate, '2026-09-09');
+  assert.equal(reload.data.tasks[0].estimateMinutes, 25);
+  assert.equal(reload.data.tasks[0].status, 'todo');
 });
 
 test("database-backed store imports JSON, persists revisions, and keeps a recovery mirror", async (t) => {

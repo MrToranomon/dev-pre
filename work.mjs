@@ -11,6 +11,7 @@ import {
   workspaceDataDirectory,
 } from "./src/workspace-store.mjs";
 import { SearchEngine, fileHealth } from "./src/search-engine.mjs";
+import { storageOverview, storageKey } from "./src/storage-overview.mjs";
 import {
   automationPreview,
   runAutomation,
@@ -22,7 +23,7 @@ import {
   projectDiagnostics,
 } from "./src/workspace-insights.mjs";
 import { dashboardState } from "./src/config-manager.mjs";
-import { exists, within } from "./src/safety.mjs";
+import { exists, within, atomicJson } from "./src/safety.mjs";
 import { localDay } from "./src/local-date.mjs";
 import { workspaceTemplates } from "./src/workspace-templates.mjs";
 import { acquireWorkspaceInstance } from "./src/workspace-instance.mjs";
@@ -42,7 +43,7 @@ const dataDirectory =
   dataIndex === -1
     ? workspaceDataDirectory()
     : path.resolve(process.argv[dataIndex + 1]);
-const hotkeyLauncher = path.join(root, "launch-perfectwork.vbs");
+const hotkeyLauncher = process.env.PERFECTWORK_LAUNCHER || path.join(root, "launch-perfectwork.vbs");
 await ensureHotkeyConfiguration(dataDirectory, hotkeyLauncher);
 const instance = await acquireWorkspaceInstance(dataDirectory);
 if (instance.existing) {
@@ -67,10 +68,30 @@ const automationPreviews = new Map();
 let server;
 let orbitProcess = null;
 let healthCache = null;
+let storageCache = null;
+let storageRun = null;
+try {
+  const cached = JSON.parse(await fs.readFile(path.join(dataDirectory, 'storage-overview.json'), 'utf8'));
+  if (cached.key === storageKey(store.data.settings)) storageCache = cached;
+} catch { /* Rebuild missing or obsolete cache on first view. */ }
+async function getStorageOverview(refresh = false) {
+  const settings = structuredClone(store.data.settings), key = storageKey(settings);
+  if (!refresh && storageCache?.key === key && Date.now() - Date.parse(storageCache.scannedAt) < 300_000) return storageCache;
+  if (storageRun) { await storageRun; return getStorageOverview(false); }
+  storageRun = storageOverview(settings).then(async result => {
+    if (storageKey(store.data.settings) === key) {
+      storageCache = result;
+      await atomicJson(path.join(dataDirectory, 'storage-overview.json'), result);
+    }
+    return result;
+  }).finally(() => { storageRun = null; });
+  return storageRun;
+}
 
 const assets = new Map([
   ["/", ["workbench/index.html", "text/html; charset=utf-8"]],
   ["/app.js", ["workbench/app.js", "text/javascript; charset=utf-8"]],
+  ["/storage.js", ["workbench/storage.js", "text/javascript; charset=utf-8"]],
   ["/styles.css", ["workbench/styles.css", "text/css; charset=utf-8"]],
   ["/experience.css", ["workbench/experience.css", "text/css; charset=utf-8"]],
   [
@@ -157,6 +178,7 @@ function allowedLocalPath(file, state) {
   const resolved = path.resolve(file);
   const roots = [
     ...state.settings.searchRoots,
+    ...(state.settings.healthRoots ?? []),
     state.settings.writeRoot,
     ...state.projects.map((project) => project.folder).filter(Boolean),
   ].map((item) => path.resolve(item));
@@ -208,6 +230,10 @@ async function api(request, response, url) {
   )
     return send(response, 403, { error: "Origin not allowed." });
   const route = url.pathname;
+  if (request.method === "GET" && route === "/api/storage")
+    return send(response, 200, await getStorageOverview(url.searchParams.get('refresh') === '1'));
+  if (request.method === "GET" && route === "/api/storage/cached")
+    return send(response, 200, storageCache?.key === storageKey(store.data.settings) ? storageCache : null);
   if (request.method === "GET" && route === "/api/state")
     return send(response, 200, await appState());
   if (request.method === "GET" && route === "/api/search")
@@ -219,8 +245,10 @@ async function api(request, response, url) {
       status: search.status,
     });
   if (request.method === "GET" && route === "/api/health") {
-    healthCache = await fileHealth(store.data.settings);
-    return send(response, 200, healthCache);
+    const settings = structuredClone(store.data.settings), key = storageKey(settings);
+    const result = await fileHealth(settings);
+    if (storageKey(store.data.settings) === key) healthCache = result;
+    return send(response, 200, result);
   }
   if (request.method === "GET" && route === "/api/projects/diagnostics")
     return send(response, 200, {
@@ -253,6 +281,7 @@ async function api(request, response, url) {
     if (input.hotkey?.shortcut !== undefined)
       normalizeHotkey(input.hotkey.shortcut);
     const result = await store.updateSettings(input);
+    if (input.healthRoots !== undefined) healthCache = null;
     if (input.hotkey)
       await updateHotkeyConfiguration(
         dataDirectory,
@@ -277,6 +306,8 @@ async function api(request, response, url) {
     return mutate(response, () => store.convertInbox(input.id, input.target));
   if (route === "/api/task/create")
     return mutate(response, () => store.createTask(input), 201);
+  if (route === "/api/task/batch")
+    return mutate(response, () => store.createTaskBatch(input), 201);
   if (route === "/api/task/update")
     return mutate(response, () => store.updateTask(input.id, input));
   if (route === "/api/project/create")
@@ -391,6 +422,7 @@ async function api(request, response, url) {
   if (route === "/api/orbit") {
     if (!orbitProcess || orbitProcess.exitCode !== null) {
       orbitProcess = spawn(process.execPath, [path.join(root, "manage.mjs")], {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
         cwd: root,
         detached: true,
         stdio: "ignore",
@@ -532,3 +564,12 @@ server.listen(0, "127.0.0.1", async () => {
   search.build(store.data.settings).catch(() => {});
 });
 setInterval(() => runScheduled().catch(() => {}), 60_000).unref();
+
+// Desktop quit waits for active HTTP requests and durable writes to finish.
+process.parentPort?.on('message', async ({ data }) => {
+  if (data?.type !== 'shutdown') return;
+  await new Promise((resolve) => server.close(resolve));
+  while (scheduling) await new Promise((resolve) => setTimeout(resolve, 50));
+  await store.close();
+  process.exit(0);
+});

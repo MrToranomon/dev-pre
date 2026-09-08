@@ -1,11 +1,11 @@
 {
-  "name": "PerfectWork",
-  "short_name": "PerfectWork",
-  "description": "あなたの一歩を、前へ。仕事とアイデアをつなぐワークスペース。",
+  "name": "TigerGate",
+  "short_name": "TigerGate",
+  "description": "タスク・メモ・プロジェクトを管理するアプリ",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f7f8fa",
-  "theme_color": "#7660d3",
+  "theme_color": "#A56522",
   "icons": [
     {
       "src": "/icon.svg",

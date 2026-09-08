@@ -6,29 +6,29 @@
     <meta name="theme-color" content="#0b0d17" />
     <meta
       name="description"
-      content="仕事、情報、ファイルをひとつにつなぐローカルファーストの作業OS"
+      content="タスク・メモ・プロジェクトを管理するアプリ"
     />
     <meta name="perfectwork-token" content="__PERFECTWORK_TOKEN__" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/experience.css" />
-    <title>PerfectWork — Personal Work OS</title>
+    <title>TigerGate</title>
   </head>
   <body>
     <div class="app">
       <aside class="sidebar" id="sidebar">
         <div class="brand">
-          <span class="brand-glyph">✳</span>
+          <img class="brand-icon" src="/icon.svg" alt="" width="36" height="36" />
           <div>
-            <strong>PerfectWork</strong><small>MAKE ROOM FOR GREAT WORK</small>
+            <strong>TigerGate</strong>
           </div>
         </div>
         <button class="quick-capture" id="captureButton" type="button">
-          <span>＋</span> メモを残す <kbd>N</kbd>
+          メモを追加 <kbd>N</kbd>
         </button>
         <nav class="nav" id="navigation" aria-label="メインメニュー">
-          <p class="nav-section">MY WORKSPACE</p>
+          <p class="nav-section">作業</p>
           <button data-view="today" class="active">
             <span>⌂</span>ホーム<kbd>1</kbd>
           </button>
@@ -44,14 +44,14 @@
           </button>
           <button data-view="habits"><span>♧</span>習慣</button>
           <button data-view="worklog"><span>◷</span>振り返り</button>
-          <p class="nav-section">TOOLS & INSPIRATION</p>
+          <p class="nav-section">ツール</p>
           <button data-view="search">
             <span>⌕</span>ファイル検索<kbd>2</kbd>
           </button>
           <button data-view="automations"><span>⌁</span>自動化</button>
           <button data-view="health"><span>◉</span>ファイル診断</button>
           <button data-view="library">
-            <span>✧</span>はじめ方・テンプレート
+            <span>✧</span>テンプレート・使い方
           </button>
         </nav>
         <div class="sidebar-bottom">
@@ -81,7 +81,6 @@
             ☰
           </button>
           <div>
-            <p class="eyebrow" id="viewEyebrow">COMMAND CENTER</p>
             <h1 id="viewTitle">今日</h1>
           </div>
           <div class="top-actions">
@@ -103,7 +102,7 @@
               type="button"
               aria-label="プロフィール設定"
             >
-              PW
+              TG
             </button>
           </div>
         </header>
@@ -122,8 +121,7 @@
         >
           ×
         </button>
-        <p class="eyebrow">CAPTURE NOW, ORGANIZE LATER</p>
-        <h2 id="captureTitle">頭の中から、ここへ。</h2>
+        <h2 id="captureTitle">メモを追加</h2>
         <input name="id" type="hidden" /><label
           ><span>タイトル</span
           ><input
@@ -157,14 +155,14 @@
             name="body"
             rows="6"
             maxlength="20000"
-            placeholder="思考をそのまま書いてください。整理はあとでできます。"
+            placeholder="メモを入力"
           ></textarea>
         </label>
         <div class="dialog-actions">
           <button class="button ghost" type="button" data-close="captureDialog">
             キャンセル</button
           ><button class="button primary" type="submit">
-            インボックスへ保存
+            保存
           </button>
         </div>
       </form>
@@ -180,7 +178,6 @@
         >
           ×
         </button>
-        <p class="eyebrow">NEXT ACTION</p>
         <h2 id="taskDialogTitle">タスクを追加</h2>
         <input name="id" type="hidden" /><label
           ><span>タスク</span
@@ -230,7 +227,7 @@
         <div class="dialog-actions">
           <button class="button ghost" type="button" data-close="taskDialog">
             キャンセル</button
-          ><button class="button primary" type="submit">追加する</button>
+          ><button class="button primary" type="submit">追加</button>
         </div>
       </form>
     </dialog>
@@ -245,8 +242,7 @@
         >
           ×
         </button>
-        <p class="eyebrow">NEW MISSION</p>
-        <h2 id="projectDialogTitle">プロジェクトを開始</h2>
+        <h2 id="projectDialogTitle">プロジェクトを追加</h2>
         <input name="id" type="hidden" /><label
           ><span>プロジェクト名</span
           ><input
@@ -298,7 +294,7 @@
         <div class="dialog-actions">
           <button class="button ghost" type="button" data-close="projectDialog">
             キャンセル</button
-          ><button class="button primary" type="submit">保存する</button>
+          ><button class="button primary" type="submit">保存</button>
         </div>
       </form>
     </dialog>
@@ -314,7 +310,6 @@
         >
           ×
         </button>
-        <p class="eyebrow">RECORD THE WIN</p>
         <h2 id="worklogTitle">作業を記録</h2>
         <label
           ><span>やったこと</span><input name="title" required maxlength="300"
@@ -353,7 +348,6 @@
         >
           ×
         </button>
-        <p class="eyebrow">NO-CODE AUTOMATION</p>
         <h2 id="automationTitle">自動化を作成</h2>
         <input name="id" type="hidden" /><label
           ><span>名前</span
@@ -389,7 +383,7 @@
             data-close="automationDialog"
           >
             キャンセル</button
-          ><button class="button primary" type="submit">保存する</button>
+          ><button class="button primary" type="submit">保存</button>
         </div>
       </form>
     </dialog>
@@ -407,7 +401,6 @@
         >
           ×
         </button>
-        <p class="eyebrow">SAFE PREVIEW</p>
         <h2 id="automationPreviewTitle">実行内容を確認</h2>
         <p id="automationPreviewSummary"></p>
         <div id="automationPreviewList" class="stack-list"></div>
@@ -442,14 +435,13 @@
         >
           ×
         </button>
-        <p class="eyebrow">LOCAL-FIRST SETTINGS</p>
-        <h2 id="settingsTitle">PerfectWork設定</h2>
+        <h2 id="settingsTitle">TigerGate設定</h2>
         <div class="settings-grid">
           <label><span>表示名</span><input name="name" maxlength="80" /></label
           ><label
             ><span>アクセント</span
             ><select name="accent">
-              <option value="violet">Violet</option>
+              <option value="violet">Amber</option>
               <option value="cyan">Cyan</option>
               <option value="lime">Lime</option>
               <option value="sunset">Sunset</option>
@@ -487,7 +479,7 @@
             ><input name="healthStaleDays" type="number" min="1" max="3650"
           /></label
           ><label class="full"
-            ><span>PerfectWorkを開くグローバルキー</span
+            ><span>TigerGateを開くグローバルキー</span
             ><input
               name="launcherHotkey"
               maxlength="40"
@@ -511,7 +503,7 @@
             data-close="settingsDialog"
           >
             キャンセル</button
-          ><button class="button primary" type="submit">保存する</button>
+          ><button class="button primary" type="submit">保存</button>
         </div>
       </form>
     </dialog>
@@ -553,8 +545,7 @@
         >
           ×
         </button>
-        <p class="eyebrow">ONE THING AT A TIME</p>
-        <h2 id="focusTitle">集中する時間をつくる</h2>
+        <h2 id="focusTitle">集中タイマー</h2>
         <div id="focusContents"></div>
       </div>
     </dialog>
@@ -568,10 +559,9 @@
         >
           ×
         </button>
-        <p class="eyebrow">YOUR NORTH STAR</p>
-        <h2 id="goalTitle">今日、ひとつ進めるなら？</h2>
+        <h2 id="goalTitle">今日の目標</h2>
         <label
-          ><span>今日のいちばん大切なこと</span
+          ><span>目標</span
           ><input
             name="dailyFocus"
             maxlength="240"
@@ -579,7 +569,7 @@
             required
         /></label>
         <div class="dialog-actions">
-          <button class="button primary" type="submit">今日の目標にする</button>
+          <button class="button primary" type="submit">保存</button>
         </div>
       </form>
     </dialog>
@@ -610,6 +600,7 @@
       </div>
     </dialog>
     <script src="/app.js"></script>
+    <script src="/storage.js"></script>
     <script src="/experience.js"></script>
   </body>
 </html>

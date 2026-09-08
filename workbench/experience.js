@@ -8,6 +8,7 @@ let reviewRange = "week";
 let searchVersion = 0;
 let searchQuery = "";
 let focusNotified = "";
+let availableMinutes = 30;
 const dateKey = (value = new Date()) => {
   const d = new Date(value);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -26,8 +27,8 @@ const rankTasks = (a, b) =>
   (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999");
 const navButton = (name, label, classes = "button text small") =>
   `<button class="${classes}" data-action="navigate" data-view="${name}">${label}</button>`;
-const intro = (title, copy) =>
-  `<div class="page-intro"><h2>${title}</h2><p>${copy}</p></div>`;
+const intro = (copy) =>
+  `<p class="page-help">${escapeHtml(copy)}</p>`;
 
 function applyVisualStyles() {
   document.querySelectorAll("progress").forEach((element) => {
@@ -44,7 +45,7 @@ function taskCard(task, compact = false) {
     <div class="work-card-head"><input class="task-check" type="checkbox" data-action="toggle-task" data-id="${task.id}" ${task.status === "done" ? "checked" : ""} aria-label="${escapeHtml(task.title)}を${task.status === "done" ? "未完了" : "完了"}にする"><button class="task-title" data-action="edit-task" data-id="${task.id}">${escapeHtml(task.title)}</button></div>
     <div class="work-card-meta">${task.priority === "high" ? '<span class="tag warm">優先</span>' : ""}${overdue ? '<span class="tag overdue">期限超過</span>' : ""}${task.dueDate ? `<span>期限 ${formatDate(task.dueDate)}</span>` : ""}${task.estimateMinutes ? `<span>◷ ${task.estimateMinutes}分</span>` : ""}${task.projectId ? `<span class="project-label">◇ ${escapeHtml(projectName(task.projectId))}</span>` : ""}</div>
     ${!compact && checks.length ? `<details class="task-checklist"><summary>チェックリスト ${checks.filter((item) => item.done).length}/${checks.length}</summary>${checks.map((item, index) => `<label><input type="checkbox" data-action="check-subtask" data-id="${task.id}" data-index="${index}" ${item.done ? "checked" : ""}><span>${escapeHtml(item.title)}</span></label>`).join("")}</details>` : ""}
-    <div class="card-actions">${task.status === "archived" ? `<button data-action="restore-task" data-id="${task.id}">↶ 戻す</button>` : isOpenTask(task) ? `<button data-action="focus-task" data-id="${task.id}">▷ 集中</button><button data-action="plan-today" data-id="${task.id}">${task.scheduledDate === state.computed.today ? "今日の予定 ✓" : "今日に予定"}</button><button data-action="doing-task" data-id="${task.id}">${task.status === "doing" ? "未着手へ" : "着手する"}</button>` : ""}${!compact && task.status !== "archived" ? `<button data-action="archive-task" data-id="${task.id}" aria-label="${escapeHtml(task.title)}を保管">保管</button>` : ""}</div>
+    <div class="card-actions">${task.status === "archived" ? `<button data-action="restore-task" data-id="${task.id}">↶ 戻す</button>` : isOpenTask(task) ? `<button data-action="focus-task" data-id="${task.id}">集中</button>${task.scheduledDate === state.computed.today ? "" : `<button data-action="plan-today" data-id="${task.id}">今日に設定</button>`}<button data-action="doing-task" data-id="${task.id}">${task.status === "doing" ? "未着手へ" : "着手"}</button>` : ""}${!compact && task.status !== "archived" ? `<button data-action="archive-task" data-id="${task.id}" aria-label="${escapeHtml(task.title)}を保管">保管</button>` : ""}</div>
   </article>`;
 }
 
@@ -68,64 +69,30 @@ function renderHome() {
   const projects = state.projects
     .filter((item) => item.status === "active")
     .slice(0, 3);
-  view.innerHTML = `<div class="welcome-line"><div><span class="day-label">${formatDate(today, { month: "long", day: "numeric", weekday: "long" })}</span><h2>${state.profile.name ? `${escapeHtml(state.profile.name)}さん、` : "さあ、"}いい仕事をしよう。</h2><p>やりたいことに、ちゃんと手が届く一日へ。</p></div><span class="local-badge" title="${state.storage?.backend === "postgresql" ? "PostgreSQLを正本として保存し、JSONミラーも更新します" : "このPCのJSONファイルに保存します"}"><i></i> ${state.storage?.backend === "postgresql" ? "PostgreSQL + JSON保護" : "このPCに保存"}</span></div>
-    <div class="home-hero"><div class="hero-content"><p class="eyebrow">A LITTLE PROGRESS. A BIG POSSIBILITY.</p><h2>${goal ? escapeHtml(goal) : "大きなアイデアを、<br>今日の一歩に。"}</h2><p>${goal ? "今日のいちばん大切なこと。少しずつ、形にしていこう。" : "頭の中を整理して、ひとつ選んで、集中する。<br>あなたの次の挑戦は、ここから始まります。"}</p><div class="hero-actions"><button class="button primary" data-action="${goal ? "focus" : "edit-focus"}">${goal ? "▷ 集中をはじめる" : "＋ 今日の目標を決める"}</button>${goal ? '<button class="button ghost" data-action="edit-focus">目標を編集</button>' : navButton("library", "アイデアから始める ↗", "button ghost")}</div></div><div class="orbit-art" aria-hidden="true"><div class="orbit-ring ring-one"></div><div class="orbit-ring ring-two"></div><div class="orbit-core">✳</div><div class="floating-label label-top">✦ MAKE IT HAPPEN</div><div class="floating-label label-bottom">ひらめき → 一歩 → 成果</div><span class="art-spark spark-one">✧</span><span class="art-spark spark-two">✦</span></div></div>
-    <div class="home-metrics"><article><span class="metric-icon violet">☑</span><div><strong>${completed}<small> 件</small></strong><span>今日の完了</span></div></article><article><span class="metric-icon green">◷</span><div><strong>${state.computed.focusToday}<small> 分</small></strong><span>今日の集中</span></div></article><article><span class="metric-icon peach">▦</span><div><strong>${planned.length}<small> 件</small></strong><span>今日の予定・期限</span></div></article><article><span class="metric-icon pink">♧</span><div><strong>${state.insights.streak}<small> 日</small></strong><span>成果の連続記録</span></div></article></div>
-    ${!state.profile.onboarded ? `<section class="getting-started"><div><strong>はじめの3ステップ</strong><p>自分の仕事を登録すると、ここがあなた専用のホームになります。</p></div><div class="onboarding-steps"><button data-action="capture"><b>${state.inbox.length ? "✓" : "1"}</b>思いつきをメモ</button><button data-action="new-task"><b>${state.tasks.length ? "✓" : "2"}</b>やることを追加</button><button data-action="focus"><b>${state.sessions.length ? "✓" : "3"}</b>25分、集中する</button></div><button class="icon-button" data-action="dismiss-guide" aria-label="はじめの3ステップを閉じる">×</button></section>` : ""}
-    <div class="home-columns"><div><section class="panel"><div class="panel-heading"><div><h3>今日の一歩 <span class="count-badge">${planned.length}</span></h3><p>予定日が今日、または期限が今日までのタスク。</p></div>${navButton("planner", "週間プラン ↗")}</div>${
+  view.innerHTML = `<div class="home-summary"><span class="day-label">${formatDate(today, { month: "long", day: "numeric", weekday: "long" })}</span></div>
+    ${quickTaskForm()}
+    <section class="daily-goal" aria-label="今日の目標"><div><h2>今日の目標</h2><p>${goal ? escapeHtml(goal) : "未設定"}</p></div><button class="button ghost small" data-action="edit-focus">${goal ? "編集" : "設定"}</button></section>
+    <div class="home-metrics"><article><div><strong>${planned.length}<small> 件</small></strong><span>今日の予定・期限</span></div></article><article><div><strong>${completed}<small> 件</small></strong><span>今日の完了</span></div></article><article><div><strong>${state.computed.focusToday}<small> 分</small></strong><span>今日の集中</span></div></article><article><div><strong>${state.computed.openTasks}<small> 件</small></strong><span>未完了タスク</span></div></article></div>
+    <div class="home-columns"><div><section class="panel"><div class="panel-heading"><div><h3>今日のタスク <span class="count-badge">${planned.length}</span></h3><p>今日の予定と、今日までが期限のタスク</p></div>${navButton("planner", "週間プラン")}</div>${
       planned.length
-        ? `<div class="stack-list">${planned
-            .slice(0, 5)
-            .map((task) => taskCard(task, true))
-            .join("")}</div>`
-        : next
-          ? `<div class="next-suggestion"><span class="eyebrow">NEXT SUGGESTION</span><p>今日は何を進めますか？ 優先度から候補を選びました。</p>${taskCard(next, true)}</div>`
-          : empty(
-              "☀",
-              "今日の一歩を決めましょう",
-              "5分でできる小さなことからで大丈夫。",
-              '<button class="button primary" data-action="new-task">＋ 最初のタスクを追加</button>',
-            )
-    }<button class="add-row" data-action="new-task">＋ やることを追加する</button></section>
-    <section class="panel home-projects"><div class="panel-heading"><div><h3>育てているプロジェクト</h3><p>小さな完了が、大きな前進に。</p></div>${navButton("projects", "すべて見る ↗")}</div>${
-      projects.length
-        ? projects
-            .map((project) => {
-              const tasks = state.tasks.filter(
-                (task) =>
-                  task.projectId === project.id && task.status !== "archived",
-              );
-              const done = tasks.filter(
-                (task) => task.status === "done",
-              ).length;
-              return `<button class="project-summary" data-action="project-detail" data-id="${project.id}"><span class="project-symbol" style="--project-color:${escapeHtml(project.color)}">◇</span><div><strong>${escapeHtml(project.name)}</strong><small>${done}/${tasks.length} タスク完了</small><progress max="${Math.max(1, tasks.length)}" value="${done}" aria-label="${escapeHtml(project.name)}のタスク完了率"></progress></div><span>↗</span></button>`;
-            })
-            .join("")
-        : empty(
-            "◇",
-            "アイデアを形にする場所",
-            "テンプレートなら、次の行動もまとめて用意できます。",
-            navButton("library", "テンプレートを選ぶ", "button ghost"),
-          )
-    }</section></div>
-    <div><section class="panel focus-widget"><div class="panel-heading"><h3>集中のスイッチ</h3><span class="tag">FOCUS</span></div><div class="mini-clock" id="homeFocusClock">25:00</div><p>${state.computed.activeSession ? escapeHtml(state.computed.activeSession.title) : "ひとつのことに、心地よく没頭。"}</p><button class="button primary" data-action="focus">${state.computed.activeSession ? "セッションを開く" : "▷ 集中時間をつくる"}</button><small>時間とタスクを選んでスタート</small></section>
-    <section class="panel habit-widget"><div class="panel-heading"><div><h3>毎日の小さな習慣</h3><p>自分のペースで、続けよう。</p></div>${navButton("habits", "↗")}</div>${
-      habits.length
-        ? habits
-            .slice(0, 4)
-            .map(
-              (habit) =>
-                `<label class="habit-today"><input type="checkbox" data-action="habit-today" data-id="${habit.id}" ${habit.days.includes(today) ? "checked" : ""}><span>${escapeHtml(habit.name)}</span></label>`,
-            )
-            .join("")
-        : empty(
-            "♧",
-            "いいリズムを、ひとつ",
-            "読書、ストレッチ、一日の振り返り。",
-            navButton("habits", "習慣をつくる", "button ghost small"),
-          )
+        ? `<div class="stack-list">${planned.slice(0, 5).map((task) => taskCard(task, true)).join("")}</div>${planned.length > 5 ? navButton("tasks", "すべてのタスクを見る", "button ghost task-more") : ""}`
+        : empty("", "今日のタスクはありません", "", next ? `<button class="button ghost" data-action="plan-today" data-id="${next.id}">次のタスクを今日に設定</button><p class="suggested-task">${escapeHtml(next.title)}</p>` : "")
     }</section>
-    <button class="inspiration-card" data-action="navigate" data-view="library"><span>✧</span><strong>次は、何をつくろう？</strong><p>挑戦のスタートを助ける<br>3つのワークフローテンプレート。</p><b>見つけにいく ↗</b></button></div></div>`;
+    <section class="panel home-projects"><div class="panel-heading"><h3>進行中のプロジェクト</h3>${navButton("projects", "すべて見る")}</div>${
+      projects.length
+        ? projects.map((project) => {
+            const tasks = state.tasks.filter((task) => task.projectId === project.id && task.status !== "archived");
+            const done = tasks.filter((task) => task.status === "done").length;
+            return `<button class="project-summary" data-action="project-detail" data-id="${project.id}"><div><strong>${escapeHtml(project.name)}</strong><small>${done}/${tasks.length} タスク完了</small><progress max="${Math.max(1, tasks.length)}" value="${done}" aria-label="${escapeHtml(project.name)}のタスク完了率"></progress></div><span aria-hidden="true">›</span></button>`;
+          }).join("")
+        : empty("", "プロジェクトはありません", "", '<button class="button ghost" data-action="new-project">プロジェクトを追加</button>')
+    }</section></div>
+    <div>${renderTimeSuggestions()}<section class="panel focus-widget"><div class="panel-heading"><h3>集中タイマー</h3></div><div class="mini-clock" id="homeFocusClock">25:00</div>${state.computed.activeSession ? `<p>${escapeHtml(state.computed.activeSession.title)}</p>` : ""}<button class="button primary" data-action="focus">${state.computed.activeSession ? "タイマーを開く" : "タイマーを設定"}</button></section>
+    <section class="panel habit-widget"><div class="panel-heading"><h3>習慣</h3>${navButton("habits", "すべて見る")}</div>${
+      habits.length
+        ? habits.slice(0, 4).map((habit) => `<label class="habit-today"><input type="checkbox" data-action="habit-today" data-id="${habit.id}" ${habit.days.includes(today) ? "checked" : ""}><span>${escapeHtml(habit.name)}</span></label>`).join("")
+        : empty("", "習慣はありません", "", navButton("habits", "習慣を追加", "button ghost"))
+    }</section></div></div>`;
   updateFocusClock();
 }
 
@@ -162,10 +129,10 @@ function renderTaskBoard() {
           .includes(taskQuery.toLocaleLowerCase()),
     )
     .sort(rankTasks);
-  view.innerHTML = `${intro("やることを、前に進める。", "タスクを小さく分けて、予定して、集中。完了までの流れがひと目で分かります。")}<div class="toolbar"><div class="filters">${filters.map(([key, label]) => `<button data-action="filter" data-filter="${key}" class="${currentFilter === key ? "active" : ""}">${label}</button>`).join("")}</div><button class="button primary" data-action="new-task">＋ タスクを追加</button></div><div class="task-controls"><input id="taskQuery" type="search" aria-label="タスクを検索" placeholder="⌕ タスクを検索" value="${escapeHtml(taskQuery)}"><select id="taskProjectFilter" aria-label="プロジェクトで絞り込む"><option value="">すべてのプロジェクト</option>${state.projects.map((project) => `<option value="${project.id}" ${taskProjectFilter === project.id ? "selected" : ""}>${escapeHtml(project.name)}</option>`).join("")}</select><div class="filters"><button data-action="task-layout" data-layout="board" class="${taskLayout === "board" ? "active" : ""}">▥ ボード</button><button data-action="task-layout" data-layout="list" class="${taskLayout === "list" ? "active" : ""}">☰ リスト</button></div><span class="result-count">${items.length}件</span></div>
+  view.innerHTML = `${quickTaskForm()}<div class="toolbar"><div class="filters">${filters.map(([key, label]) => `<button data-action="filter" data-filter="${key}" class="${currentFilter === key ? "active" : ""}">${label}</button>`).join("")}</div><button class="button primary" data-action="new-task">タスクを追加</button></div><div class="task-controls"><input id="taskQuery" type="search" aria-label="タスクを検索" placeholder="⌕ タスクを検索" value="${escapeHtml(taskQuery)}"><select id="taskProjectFilter" aria-label="プロジェクトで絞り込む"><option value="">すべてのプロジェクト</option>${state.projects.map((project) => `<option value="${project.id}" ${taskProjectFilter === project.id ? "selected" : ""}>${escapeHtml(project.name)}</option>`).join("")}</select><div class="filters"><button data-action="task-layout" data-layout="board" class="${taskLayout === "board" ? "active" : ""}">ボード</button><button data-action="task-layout" data-layout="list" class="${taskLayout === "list" ? "active" : ""}">リスト</button></div><span class="result-count">${items.length}件</span></div>
     ${
       !items.length
-        ? `<section class="panel">${empty("☑", "この条件のタスクはありません", "条件を変えるか、新しいタスクを追加してください。", '<button class="button ghost" data-action="new-task">＋ タスクを追加</button>')}</section>`
+        ? `<section class="panel">${empty("☑", "この条件のタスクはありません", "条件を変えるか、新しいタスクを追加してください。", '<button class="button ghost" data-action="new-task">タスクを追加</button>')}</section>`
         : taskLayout === "board" && currentFilter !== "archived"
           ? `<div class="kanban">${[
               ["todo", "未着手"],
@@ -189,16 +156,7 @@ function renderTaskBoard() {
     taskProjectFilter = event.target.value;
     render();
   };
-  $("#taskQuery").oninput = (event) => {
-    taskQuery = event.target.value;
-    const position = event.target.selectionStart;
-    renderTaskBoard();
-    const input = $("#taskQuery");
-    input.focus();
-    try {
-      input.setSelectionRange(position, position);
-    } catch {}
-  };
+  bindLiveFilter("#taskQuery", value => { taskQuery = value; });
 }
 
 function renderPlanner() {
@@ -209,7 +167,7 @@ function renderPlanner() {
   const unscheduled = state.tasks
     .filter((task) => isOpenTask(task) && !task.scheduledDate)
     .sort(rankTasks);
-  view.innerHTML = `${intro("時間に、余白と見通しを。", "「いつやるか」と「いつまでか」を分けて考える。タスクを編集すると予定日と見積時間を設定できます。")}<div class="toolbar"><div class="week-heading"><button class="icon-button" data-action="week-shift" data-offset="-1" aria-label="前の週">←</button><h3>${formatDate(monday)} — ${formatDate(dates[6])}</h3><button class="icon-button" data-action="week-shift" data-offset="1" aria-label="次の週">→</button><button class="button ghost small" data-action="week-reset">今週</button></div><button class="button primary" data-action="new-task">＋ タスクを追加</button></div><div class="week-grid">${dates
+  view.innerHTML = `${intro("タスクの予定日を週ごとに確認できます。")}<div class="toolbar"><div class="week-heading"><button class="icon-button" data-action="week-shift" data-offset="-1" aria-label="前の週">←</button><h3>${formatDate(monday)} — ${formatDate(dates[6])}</h3><button class="icon-button" data-action="week-shift" data-offset="1" aria-label="次の週">→</button><button class="button ghost small" data-action="week-reset">今週</button></div><button class="button primary" data-action="new-task">タスクを追加</button></div><div class="week-grid">${dates
     .map((date, i) => {
       const tasks = state.tasks
         .filter(
@@ -226,7 +184,7 @@ function renderPlanner() {
     })
     .join(
       "",
-    )}</div><section class="panel unscheduled"><div class="panel-heading"><div><h3>まだ予定していないこと <span class="count-badge">${unscheduled.length}</span></h3><p>「今日に予定」でホームへ。別の日ならタスクを編集して予定日を選べます。</p></div></div><div class="unscheduled-grid">${unscheduled.map((task) => taskCard(task, true)).join("") || empty("✓", "すべて予定できています", "無理のない量で、一歩ずつ進めましょう。")}</div></section>`;
+    )}</div><section class="panel unscheduled"><div class="panel-heading"><div><h3>まだ予定していないこと <span class="count-badge">${unscheduled.length}</span></h3><p>「今日に設定」でホームへ。別の日ならタスクを編集して予定日を選べます。</p></div></div><div class="unscheduled-grid">${unscheduled.map((task) => taskCard(task, true)).join("") || empty("✓", "すべて予定できています", "")}</div></section>`;
 }
 
 function renderKnowledge() {
@@ -241,7 +199,7 @@ function renderKnowledge() {
         .toLocaleLowerCase()
         .includes(noteQuery.toLocaleLowerCase()),
   );
-  view.innerHTML = `${intro("ひらめきを、逃さない。", "メモも、リンクも、アイデアも。ここに置いて、必要なときにタスクやプロジェクトへ。")}<div class="toolbar"><div class="filters">${[
+  view.innerHTML = `${intro("メモやリンクを保存し、タスクやプロジェクトに変換できます。")}<div class="toolbar"><div class="filters">${[
     ["open", "未整理"],
     ["favorites", "★ お気に入り"],
     ["archived", "保管"],
@@ -253,16 +211,12 @@ function renderKnowledge() {
     )
     .join(
       "",
-    )}</div><button class="button primary" data-action="capture">＋ メモを残す</button></div><input class="note-search" id="noteQuery" type="search" aria-label="メモを検索" placeholder="⌕ タイトル、本文、タグから探す" value="${escapeHtml(noteQuery)}"><div class="note-grid">${items.map((item) => `<article class="note-card"><div class="note-card-top"><span class="tag">${{ note: "メモ", idea: "✦ アイデア", link: "↗ リンク", file: "ファイル" }[item.kind] ?? "メモ"}</span><button class="favorite-button ${item.favorite ? "selected" : ""}" data-action="favorite-note" data-id="${item.id}" aria-label="${escapeHtml(item.title)}のお気に入りを${item.favorite ? "解除" : "登録"}" aria-pressed="${item.favorite}">${item.favorite ? "★" : "☆"}</button></div><button class="note-title" data-action="edit-inbox" data-id="${item.id}">${escapeHtml(item.title)}</button><p class="note-body">${escapeHtml(item.body || item.url || "本文を追加して、考えを深めよう。")}</p><div class="note-tags">${tagsHtml(item.tags)}</div><small>${relativeTime(item.updatedAt)}</small><div class="card-actions"><button data-action="edit-inbox" data-id="${item.id}">編集</button>${item.convertedTo ? "<span>変換済み</span>" : `<button data-action="convert-task" data-id="${item.id}">タスクへ</button><button data-action="convert-project" data-id="${item.id}">プロジェクトへ</button>`}${item.url ? `<button data-action="open-url" data-url="${encodeURIComponent(item.url)}">リンク ↗</button>` : ""}<button data-action="${item.status === "open" ? "archive-inbox" : "restore-inbox"}" data-id="${item.id}">${item.status === "open" ? "保管" : "戻す"}</button></div></article>`).join("") || empty("✦", "次のアイデアのための余白", "思いついたことを、短い一文で残してみよう。", '<button class="button primary" data-action="capture">＋ メモを残す</button>')}</div>`;
-  $("#noteQuery").oninput = (event) => {
-    noteQuery = event.target.value;
-    renderKnowledge();
-    $("#noteQuery").focus();
-  };
+    )}</div><button class="button primary" data-action="capture">メモを追加</button></div><input class="note-search" id="noteQuery" type="search" aria-label="メモを検索" placeholder="⌕ タイトル、本文、タグから探す" value="${escapeHtml(noteQuery)}"><div class="note-grid">${items.map((item) => `<article class="note-card"><div class="note-card-top"><span class="tag">${{ note: "メモ", idea: "✦ アイデア", link: "↗ リンク", file: "ファイル" }[item.kind] ?? "メモ"}</span><button class="favorite-button ${item.favorite ? "selected" : ""}" data-action="favorite-note" data-id="${item.id}" aria-label="${escapeHtml(item.title)}のお気に入りを${item.favorite ? "解除" : "登録"}" aria-pressed="${item.favorite}">${item.favorite ? "★" : "☆"}</button></div><button class="note-title" data-action="edit-inbox" data-id="${item.id}">${escapeHtml(item.title)}</button><p class="note-body">${escapeHtml(item.body || item.url || "本文なし")}</p><div class="note-tags">${tagsHtml(item.tags)}</div><small>${relativeTime(item.updatedAt)}</small><div class="card-actions"><button data-action="edit-inbox" data-id="${item.id}">編集</button>${item.convertedTo ? "<span>変換済み</span>" : `<button data-action="convert-task" data-id="${item.id}">タスクへ</button><button data-action="convert-project" data-id="${item.id}">プロジェクトへ</button>`}${item.url ? `<button data-action="open-url" data-url="${encodeURIComponent(item.url)}">リンク</button>` : ""}<button data-action="${item.status === "open" ? "archive-inbox" : "restore-inbox"}" data-id="${item.id}">${item.status === "open" ? "保管" : "戻す"}</button></div></article>`).join("") || empty("✦", "メモはありません", "", '<button class="button primary" data-action="capture">メモを追加</button>')}</div>`;
+  bindLiveFilter("#noteQuery", value => { noteQuery = value; });
 }
 
 function renderSearch() {
-  view.innerHTML = `${intro("探していたものに、すぐ届く。", "登録したフォルダのファイル名と、PDF・Word・テキストの内容をまとめて検索。")}<div class="search-page"><div class="search-main"><span>⌕</span><input id="pageSearch" type="search" autocomplete="off" aria-label="ファイルの名前や内容を検索" placeholder="ファイル名、資料に書かれた言葉…" value="${escapeHtml(searchQuery)}"><button class="button ghost small" data-action="reindex">索引を更新</button></div><div class="search-meta"><span id="searchStatus">${state.search.state === "indexing" ? `索引を作成中 · ${state.search.files}件` : state.search.updatedAt ? `${state.search.files}ファイル · 内容を検索できるファイル ${state.search.contentFiles}件` : "索引を準備しています"}</span><button class="button text small" data-action="settings">検索するフォルダを設定 ↗</button></div>${state.search.errors ? `<p class="hint">${state.search.errors}件の読み取りをスキップしました。読み取り可能なファイルは検索できます。</p>` : ""}${state.search.limited ? '<p class="hint">検索上限に達しています。設定で対象を絞るか、最大ファイル数を増やしてください。</p>' : ""}<div id="searchResults" class="stack-list"></div></div>`;
+  view.innerHTML = `${intro("登録フォルダのファイル名と、PDF・Word・テキストの内容を検索します。")}<div class="search-page"><div class="search-main"><span>⌕</span><input id="pageSearch" type="search" autocomplete="off" aria-label="ファイルの名前や内容を検索" placeholder="ファイル名、資料に書かれた言葉…" value="${escapeHtml(searchQuery)}"><button class="button ghost small" data-action="reindex">索引を更新</button></div><div class="search-meta"><span id="searchStatus">${state.search.state === "indexing" ? `索引を作成中 · ${state.search.files}件` : state.search.updatedAt ? `${state.search.files}ファイル · 内容を検索できるファイル ${state.search.contentFiles}件` : "索引を準備しています"}</span><button class="button text small" data-action="settings">検索するフォルダを設定</button></div>${state.search.errors ? `<p class="hint">${state.search.errors}件の読み取りをスキップしました。読み取り可能なファイルは検索できます。</p>` : ""}${state.search.limited ? '<p class="hint">検索上限に達しています。設定で対象を絞るか、最大ファイル数を増やしてください。</p>' : ""}<div id="searchResults" class="stack-list"></div></div>`;
   $("#pageSearch").oninput = (event) => {
     searchQuery = event.target.value;
     ++searchVersion;
@@ -304,7 +258,7 @@ async function performSearch(query) {
       ? searchResults
           .map(
             (item) =>
-              `<article class="list-item search-result"><span class="item-icon">${item.extension === ".pdf" ? "P" : item.extension === ".docx" ? "W" : "◇"}</span><div><strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.snippet || "ファイル名で一致しました")}</p><small class="path">${escapeHtml(item.path)}</small><small>${formatBytes(item.size)} · ${formatDate(item.modifiedAt)}</small></div><button class="button ghost small" data-action="open-path" data-path="${encodeURIComponent(item.path)}" aria-label="${escapeHtml(item.name)}を開く">開く ↗</button></article>`,
+              `<article class="list-item search-result"><span class="item-icon">${item.extension === ".pdf" ? "P" : item.extension === ".docx" ? "W" : "◇"}</span><div><strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.snippet || "ファイル名で一致しました")}</p><small class="path">${escapeHtml(item.path)}</small><small>${formatBytes(item.size)} · ${formatDate(item.modifiedAt)}</small></div><button class="button ghost small" data-action="open-path" data-path="${encodeURIComponent(item.path)}" aria-label="${escapeHtml(item.name)}を開く">開く</button></article>`,
           )
           .join("")
       : empty(
@@ -325,7 +279,7 @@ function renderHabits() {
   const habits = state.habits.filter((item) =>
     currentFilter === "archived" ? item.archived : !item.archived,
   );
-  view.innerHTML = `${intro("小さな積み重ねが、自分を変える。", "完璧な毎日じゃなくていい。今日できたことを、ひとつチェック。過去7日の記録も直せます。")}<form id="habitForm" class="habit-add"><input name="name" required maxlength="120" aria-label="新しい習慣" placeholder="例：10分読書する、ストレッチする"><button class="button primary" type="submit">＋ 習慣を追加</button></form><div class="toolbar"><div class="filters"><button data-action="filter" data-filter="open" class="${currentFilter !== "archived" ? "active" : ""}">続けている習慣</button><button data-action="filter" data-filter="archived" class="${currentFilter === "archived" ? "active" : ""}">保管した習慣</button></div><span class="result-count">直近7日</span></div><section class="panel habit-table-wrap"><table class="habit-table"><thead><tr><th scope="col">習慣</th>${days.map((day) => `<th scope="col" class="${day === state.computed.today ? "today-cell" : ""}">${formatDate(day, { weekday: "short" })}<small>${formatDate(day)}</small></th>`).join("")}<th scope="col">管理</th></tr></thead><tbody>${habits.map((habit) => `<tr><th scope="row">${escapeHtml(habit.name)}<small>${habit.days.filter((day) => days.includes(day)).length}/7日 達成</small></th>${days.map((day) => `<td><button class="habit-check ${habit.days.includes(day) ? "checked" : ""}" aria-pressed="${habit.days.includes(day)}" aria-label="${escapeHtml(habit.name)} ${day}" data-action="habit-day" data-id="${habit.id}" data-date="${day}">${habit.days.includes(day) ? "✓" : "·"}</button></td>`).join("")}<td><button class="icon-button" data-action="archive-habit" data-id="${habit.id}">${habit.archived ? "戻す" : "保管"}</button></td></tr>`).join("")}</tbody></table>${habits.length ? "" : empty("♧", "心地いい習慣をつくろう", "まずは毎日5分でできることから。上の入力欄で追加できます。")}</section>`;
+  view.innerHTML = `${intro("日ごとの実施状況を記録できます。")}<form id="habitForm" class="habit-add"><input name="name" required maxlength="120" aria-label="新しい習慣" placeholder="例：10分読書する、ストレッチする"><button class="button primary" type="submit">習慣を追加</button></form><div class="toolbar"><div class="filters"><button data-action="filter" data-filter="open" class="${currentFilter !== "archived" ? "active" : ""}">登録中</button><button data-action="filter" data-filter="archived" class="${currentFilter === "archived" ? "active" : ""}">保管</button></div><span class="result-count">直近7日</span></div><section class="panel habit-table-wrap"><table class="habit-table"><thead><tr><th scope="col">習慣</th>${days.map((day) => `<th scope="col" class="${day === state.computed.today ? "today-cell" : ""}">${formatDate(day, { weekday: "short" })}<small>${formatDate(day)}</small></th>`).join("")}<th scope="col">管理</th></tr></thead><tbody>${habits.map((habit) => `<tr><th scope="row">${escapeHtml(habit.name)}<small>${habit.days.filter((day) => days.includes(day)).length}/7日 達成</small></th>${days.map((day) => `<td><button class="habit-check ${habit.days.includes(day) ? "checked" : ""}" aria-pressed="${habit.days.includes(day)}" aria-label="${escapeHtml(habit.name)} ${day}" data-action="habit-day" data-id="${habit.id}" data-date="${day}">${habit.days.includes(day) ? "✓" : "·"}</button></td>`).join("")}<td><button class="icon-button" data-action="archive-habit" data-id="${habit.id}">${habit.archived ? "戻す" : "保管"}</button></td></tr>`).join("")}</tbody></table>${habits.length ? "" : empty("♧", "習慣はありません", "上の入力欄で追加できます。")}</section>`;
   $("#habitForm").onsubmit = async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -339,7 +293,7 @@ function renderHabits() {
 }
 
 function renderLibrary() {
-  view.innerHTML = `${intro("次の挑戦に、いいスタートを。", "白紙から考えなくても大丈夫。目的に合うテンプレートで、最初の一歩まで準備できます。")}<div class="template-grid">${state.templates.map((template) => `<article class="template-card"><div class="template-art" style="--project-color:${template.color}"><span>${template.icon}</span><small>WORKFLOW / 0${state.templates.indexOf(template) + 1}</small></div><div><span class="eyebrow">${template.tasks.length} STEPS TO GET STARTED</span><h3>${template.name}</h3><p>${template.description}</p><button class="button ghost" data-action="template-preview" data-id="${template.id}">内容を見る ↗</button></div></article>`).join("")}</div><section class="panel guide-panel"><div class="panel-heading"><div><h3>PerfectWorkの使い方</h3><p>あなたの仕事を、ひとつの流れに。</p></div></div><div class="guide-grid">${[
+  view.innerHTML = `${intro("テンプレートからプロジェクトとタスクをまとめて追加できます。")}<div class="template-grid">${state.templates.map((template) => `<article class="template-card"><div><span class="tag">${template.tasks.length} タスク</span><h3>${template.name}</h3><p>${template.description}</p><button class="button ghost" data-action="template-preview" data-id="${template.id}">内容を見る</button></div></article>`).join("")}</div><section class="panel guide-panel"><div class="panel-heading"><div><h3>TigerGateの使い方</h3></div></div><div class="guide-grid">${[
     [
       "01",
       "メモする",
@@ -371,7 +325,7 @@ function renderLibrary() {
     )
     .join(
       "",
-    )}</div></section><div class="section-grid"><section class="panel"><h3>すぐ手が届くショートカット</h3><p class="shortcut-line"><kbd>N</kbd> メモを残す</p><p class="shortcut-line"><kbd>Ctrl / ⌘ K</kbd> タスク・メモ・プロジェクトを探す</p><p class="shortcut-line"><kbd>Esc</kbd> ダイアログを閉じる</p></section><section class="panel"><h3>データはあなたのPCに</h3><p class="muted-copy">登録した内容はこのPCに保存されます。設定の「全データを書き出す」でJSONに、自動化の「バックアップ」で指定フォルダに保存できます。</p><button class="button ghost" data-action="settings">設定・バックアップを開く</button></section></div>`;
+    )}</div></section><div class="section-grid"><section class="panel"><h3>キーボードショートカット</h3><p class="shortcut-line"><kbd>N</kbd> メモを追加</p><p class="shortcut-line"><kbd>Ctrl / ⌘ K</kbd> タスク・メモ・プロジェクトを探す</p><p class="shortcut-line"><kbd>Esc</kbd> ダイアログを閉じる</p></section><section class="panel"><h3>データの保存</h3><p class="muted-copy">登録した内容はこのPCに保存されます。設定の「全データを書き出す」でJSONに、自動化の「バックアップ」で指定フォルダに保存できます。</p><button class="button ghost" data-action="settings">設定・バックアップを開く</button></section></div>`;
 }
 
 function renderReview() {
@@ -386,7 +340,7 @@ function renderReview() {
     )
     .sort((a, b) => b.date.localeCompare(a.date));
   const section = view.querySelector(".section-grid > section");
-  section.innerHTML = `<div class="panel-heading"><div><h3>積み重ねたこと</h3><p>${logs.length}件 · ${formatMinutes(logs.reduce((sum, log) => sum + log.minutes, 0))}</p></div><button class="button primary small" data-action="new-worklog">＋ 記録</button></div><div class="toolbar"><div class="filters">${[
+  section.innerHTML = `<div class="panel-heading"><div><h3>作業記録</h3><p>${logs.length}件 · ${formatMinutes(logs.reduce((sum, log) => sum + log.minutes, 0))}</p></div><button class="button primary small" data-action="new-worklog">記録</button></div><div class="toolbar"><div class="filters">${[
     ["week", "過去7日"],
     ["month", "過去30日"],
     ["all", "すべて"],
@@ -397,7 +351,7 @@ function renderReview() {
     )
     .join(
       "",
-    )}</div><button class="button ghost small" data-action="export-review">日報を出力 ↗</button></div><div class="stack-list">${logs.map((log) => `<article class="list-item"><span class="item-icon">${log.source === "focus" ? "◷" : "✓"}</span><div><strong>${escapeHtml(log.title)}</strong><p class="preserve-lines">${escapeHtml(log.body)}</p><small>${formatDate(log.date)} · ${formatMinutes(log.minutes)} ${escapeHtml(projectName(log.projectId))}</small></div><button class="icon-button" data-action="edit-worklog" data-id="${log.id}">編集</button></article>`).join("") || empty("◷", "小さな成果も、残しておこう", "集中セッションを完了するか、手動で記録できます。")}</div>`;
+    )}</div><button class="button ghost small" data-action="export-review">日報を出力</button></div><div class="stack-list">${logs.map((log) => `<article class="list-item"><span class="item-icon">${log.source === "focus" ? "◷" : "✓"}</span><div><strong>${escapeHtml(log.title)}</strong><p class="preserve-lines">${escapeHtml(log.body)}</p><small>${formatDate(log.date)} · ${formatMinutes(log.minutes)} ${escapeHtml(projectName(log.projectId))}</small></div><button class="icon-button" data-action="edit-worklog" data-id="${log.id}">編集</button></article>`).join("") || empty("◷", "作業記録はありません", "集中セッションを完了するか、手動で記録できます。")}</div>`;
 }
 
 function showProject(id) {
@@ -409,7 +363,7 @@ function showProject(id) {
   const logs = state.worklogs.filter((log) => log.projectId === id);
   const done = tasks.filter((task) => task.status === "done").length;
   $("#projectDetail").innerHTML =
-    `<p class="eyebrow">PROJECT WORKSPACE</p><h2 id="projectDetailTitle">${escapeHtml(project.name)}</h2><p class="muted-copy preserve-lines">${escapeHtml(project.description)}</p><div class="project-detail-metrics"><span>${done}/${tasks.length} タスク完了</span><span>${formatMinutes(logs.reduce((sum, log) => sum + log.minutes, 0))}の作業</span>${status(project.status)}</div><progress max="${Math.max(1, tasks.length)}" value="${done}" aria-label="タスク完了率"></progress><div class="dialog-actions"><button class="button ghost" data-action="detail-edit-project" data-id="${id}">プロジェクトを編集</button><button class="button primary" data-action="detail-add-task" data-id="${id}">＋ タスクを追加</button></div><h3>次の行動</h3><div class="stack-list">${tasks.map((task) => `<button class="detail-task" data-action="detail-edit-task" data-id="${task.id}"><span>${task.status === "done" ? "✓" : "○"}</span>${escapeHtml(task.title)}<small>${statusLabels[task.status]}</small></button>`).join("") || '<p class="muted-copy">このプロジェクトのタスクを追加して始めましょう。</p>'}</div>${project.notes ? `<h3 class="detail-heading">プロジェクトノート</h3><p class="preserve-lines muted-copy">${escapeHtml(project.notes)}</p>` : ""}${project.links.length ? `<h3 class="detail-heading">関連リンク</h3><div class="stack-list">${project.links.map((link) => `<a class="resource-link" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)} ↗</a>`).join("")}</div>` : ""}<h3 class="detail-heading">最近の作業</h3>${
+    `<h2 id="projectDetailTitle">${escapeHtml(project.name)}</h2><p class="muted-copy preserve-lines">${escapeHtml(project.description)}</p><div class="project-detail-metrics"><span>${done}/${tasks.length} タスク完了</span><span>${formatMinutes(logs.reduce((sum, log) => sum + log.minutes, 0))}の作業</span>${status(project.status)}</div><progress max="${Math.max(1, tasks.length)}" value="${done}" aria-label="タスク完了率"></progress><div class="dialog-actions"><button class="button ghost" data-action="detail-edit-project" data-id="${id}">プロジェクトを編集</button><button class="button primary" data-action="detail-add-task" data-id="${id}">タスクを追加</button></div><h3>次の行動</h3><div class="stack-list">${tasks.map((task) => `<button class="detail-task" data-action="detail-edit-task" data-id="${task.id}"><span>${task.status === "done" ? "✓" : "○"}</span>${escapeHtml(task.title)}<small>${statusLabels[task.status]}</small></button>`).join("") || '<p class="muted-copy">タスクはありません。</p>'}</div>${project.notes ? `<h3 class="detail-heading">プロジェクトノート</h3><p class="preserve-lines muted-copy">${escapeHtml(project.notes)}</p>` : ""}${project.links.length ? `<h3 class="detail-heading">関連リンク</h3><div class="stack-list">${project.links.map((link) => `<a class="resource-link" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)}</a>`).join("")}</div>` : ""}<h3 class="detail-heading">最近の作業</h3>${
       logs
         .slice(0, 5)
         .map(
@@ -417,7 +371,7 @@ function showProject(id) {
             `<p class="muted-copy">${formatDate(log.date)} · ${escapeHtml(log.title)} · ${formatMinutes(log.minutes)}</p>`,
         )
         .join("") ||
-      '<p class="muted-copy">タスクから集中を始めると、ここにつながります。</p>'
+      '<p class="muted-copy">作業記録はありません。</p>'
     }`;
   openDialog("#projectDetailDialog");
 }
@@ -433,8 +387,8 @@ function showFocus(taskId = "") {
       ? state.profile.dailyFocus
       : "";
   $("#focusContents").innerHTML = session
-    ? `<p class="focus-task-name">${escapeHtml(session.title)}</p><div class="focus-countdown" id="focusCountdown"></div><p class="focus-state" id="focusState"></p><div class="focus-options"><button class="button ghost" data-action="pause-focus">${session.pausedAt ? "▷ 再開する" : "Ⅱ 一時停止"}</button></div><form id="finishFocusForm"><label><span>できたこと・次にやること</span><textarea name="note" rows="3" maxlength="5000" placeholder="小さな前進を残しましょう"></textarea></label>${session.taskId ? '<label class="check"><input name="completeTask" type="checkbox"> このタスクも完了にする</label>' : ""}<div class="dialog-actions"><button class="button primary" type="submit">✓ 集中を終えて記録する</button></div></form>`
-    : `<p class="muted-copy">通知やほかの作業から少し離れて、ひとつのことに集中する時間。</p><form id="startFocusForm"><label><span>取り組むタスク</span><select name="taskId"><option value="">タスクを指定せず集中する</option>${tasks.map((task) => `<option value="${task.id}" ${task.id === taskId ? "selected" : ""}>${escapeHtml(task.title)}</option>`).join("")}</select></label><label><span>セッション名（タスク未指定の場合）</span><input name="title" maxlength="200" value="${escapeHtml(goal || "集中作業")}"></label><div class="field-row"><label><span>集中時間</span><select name="plannedMinutes"><option value="15">15分 · 小さく始める</option value="25" selected>25分 · 集中する</option><option value="50">50分 · 深く取り組む</option><option value="90">90分 · じっくり進める</option></select></label><label><span>プロジェクト</span><select name="projectId"><option value="">なし</option>${state.projects
+    ? `<p class="focus-task-name">${escapeHtml(session.title)}</p><div class="focus-countdown" id="focusCountdown"></div><p class="focus-state" id="focusState"></p><div class="focus-options"><button class="button ghost" data-action="pause-focus">${session.pausedAt ? "再開する" : "Ⅱ 一時停止"}</button></div><form id="finishFocusForm"><label><span>できたこと・次にやること</span><textarea name="note" rows="3" maxlength="5000" placeholder="作業内容や次の手順を記入"></textarea></label>${session.taskId ? '<label class="check"><input name="completeTask" type="checkbox"> このタスクも完了にする</label>' : ""}<div class="dialog-actions"><button class="button primary" type="submit">✓ 集中を終えて記録する</button></div></form>`
+    : `<p class="muted-copy">タスクと時間を選んで開始します。</p><form id="startFocusForm"><label><span>取り組むタスク</span><select name="taskId"><option value="">タスクを指定せず集中する</option>${tasks.map((task) => `<option value="${task.id}" ${task.id === taskId ? "selected" : ""}>${escapeHtml(task.title)}</option>`).join("")}</select></label><label><span>セッション名（タスク未指定の場合）</span><input name="title" maxlength="200" value="${escapeHtml(goal || "集中作業")}"></label><div class="field-row"><label><span>集中時間</span><input name="plannedMinutes" type="number" min="1" max="180" step="1" value="25" required inputmode="numeric"><small class="hint">1〜180分・1分単位</small><div class="focus-presets">${[15,25,50,90].map(minutes => `<button type="button" class="button ghost small" data-action="focus-preset" data-minutes="${minutes}">${minutes}分</button>`).join("")}</div></label><label><span>プロジェクト</span><select name="projectId"><option value="">なし</option>${state.projects
         .filter((item) => item.status === "active")
         .map(
           (item) =>
@@ -442,7 +396,7 @@ function showFocus(taskId = "") {
         )
         .join(
           "",
-        )}</select></label></div><p class="hint">時間になると画面でお知らせします。終了ボタンで実際の集中時間を記録できます。</p><div class="dialog-actions"><button class="button primary" type="submit">▷ 集中をはじめる</button></div></form>`;
+        )}</select></label></div><p class="hint">時間になると画面でお知らせします。終了ボタンで実際の集中時間を記録できます。</p><div class="dialog-actions"><button class="button primary" type="submit">開始</button></div></form>`;
   if ($("#startFocusForm"))
     $("#startFocusForm").onsubmit = async (event) => {
       event.preventDefault();
@@ -463,7 +417,7 @@ function showFocus(taskId = "") {
         await mutate(
           "/api/focus/stop",
           { note: form.get("note"), completeTask: form.has("completeTask") },
-          "お疲れさまでした。集中の成果を記録しました",
+          "集中の記録を保存しました",
         )
       )
         $("#focusDialog").close();
@@ -479,7 +433,7 @@ function updateFocusClock() {
   if (!session) {
     $("#focusClock").textContent = "";
     if ($("#homeFocusClock")) $("#homeFocusClock").textContent = "25:00";
-    document.title = "PerfectWork — あなたの一歩を、前へ";
+    document.title = "TigerGate";
     return;
   }
   const elapsed = Math.max(
@@ -498,14 +452,14 @@ function updateFocusClock() {
   if ($("#focusCountdown")) $("#focusCountdown").textContent = clock;
   if ($("#focusState"))
     $("#focusState").textContent = session.pausedAt
-      ? "一時停止中 · 自分のペースで大丈夫"
+      ? "一時停止中"
       : remaining === 0
-        ? "集中時間を達成しました。区切りをつけて、ひと休み。"
+        ? "設定した集中時間になりました"
         : `集中中 · ${Math.floor(elapsed / 60)}分経過`;
-  document.title = `${clock} ${session.pausedAt ? "一時停止" : "集中"} — PerfectWork`;
+  document.title = `${clock} ${session.pausedAt ? "一時停止" : "集中"} — TigerGate`;
   if (!remaining && focusNotified !== session.id) {
     focusNotified = session.id;
-    toast("集中時間を達成しました！ セッションを開いて成果を記録しましょう。");
+    toast("設定した集中時間になりました。");
   }
 }
 
@@ -542,7 +496,7 @@ document.addEventListener("click", async (event) => {
       await mutate(
         "/api/profile",
         { onboarded: true },
-        "はじめ方はテンプレート画面からいつでも確認できます",
+        "使い方はテンプレート画面で確認できます",
       );
     else if (action === "task-layout") {
       taskLayout = target.dataset.layout;
@@ -643,13 +597,13 @@ document.addEventListener("click", async (event) => {
     } else if (action === "template-preview") {
       const template = state.templates.find((item) => item.id === id);
       $("#templateContents").innerHTML =
-        `<p class="eyebrow">START WITH A LITTLE HELP</p><h2 id="templateTitle">${template.icon} ${template.name}</h2><p class="muted-copy">${template.description}</p><ol class="template-steps">${template.tasks.map((title) => `<li>${title}</li>`).join("")}</ol><p class="hint">プロジェクト1件とタスク${template.tasks.length}件を追加します。最初のタスクは今日に予定されます。内容は自由に編集できます。</p><div class="dialog-actions"><button class="button primary" data-action="apply-template" data-id="${id}">このテンプレートで始める</button></div>`;
+        `<h2 id="templateTitle">${template.name}</h2><p class="muted-copy">${template.description}</p><ol class="template-steps">${template.tasks.map((title) => `<li>${title}</li>`).join("")}</ol><p class="hint">プロジェクト1件とタスク${template.tasks.length}件を追加します。最初のタスクは今日に設定されます。内容は自由に編集できます。</p><div class="dialog-actions"><button class="button primary" data-action="apply-template" data-id="${id}">テンプレートを追加</button></div>`;
       openDialog("#templateDialog");
     } else if (action === "apply-template") {
       const response = await mutate(
         "/api/template/apply",
         { templateId: id },
-        "プロジェクトと最初のステップを用意しました",
+        "プロジェクトとタスクを追加しました",
       );
       if (response) {
         $("#templateDialog").close();
@@ -671,7 +625,7 @@ view.addEventListener("change", async (event) => {
         done: target.checked,
       },
       target.checked
-        ? "今日もひとつ、積み重ねました"
+        ? "習慣を記録しました"
         : "今日のチェックを戻しました",
     );
   if (target.dataset.action === "check-subtask") {
@@ -694,7 +648,7 @@ $("#goalForm").onsubmit = async (event) => {
     await mutate(
       "/api/profile",
       Object.fromEntries(new FormData(event.currentTarget)),
-      "今日の目標を決めました",
+      "今日の目標を保存しました",
     )
   )
     $("#goalDialog").close();
@@ -712,13 +666,15 @@ async function refreshWorkspace() {
     !state ||
     document.hidden ||
     document.querySelector("dialog[open]") ||
-    !$("#loading").hidden ||
+    busyDepth > 0 ||
     /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName ?? "")
   )
     return;
   refreshing = true;
   try {
+    const revision = state.updatedAt;
     const fresh = await request("/api/state");
+    if (busyDepth > 0 || state.updatedAt !== revision) return;
     const changed =
       fresh.updatedAt !== state.updatedAt ||
       fresh.computed.today !== state.computed.today;
@@ -739,7 +695,7 @@ setInterval(refreshWorkspace, 30000);
 window.addEventListener("focus", refreshWorkspace);
 window.addEventListener("hashchange", () => {
   const name = location.hash.slice(1);
-  if (titles[name]) navigate(name);
+  if (titles[name]) navigate(name, true);
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
@@ -753,4 +709,80 @@ $("#mobileMenu").addEventListener("click", () =>
     String($("#sidebar").classList.contains("open")),
   ),
 );
+function timeCandidates() {
+  const today = state.computed.today;
+  return state.tasks.filter(task => {
+    const project = state.projects.find(item => item.id === task.projectId);
+    return isOpenTask(task) && (!project || project.status === 'active') &&
+      (!task.scheduledDate || task.scheduledDate <= today) &&
+      (task.estimateMinutes || 25) <= availableMinutes;
+  }).sort((a, b) => rankTasks(a, b) || (a.status === 'doing' ? -1 : 0) - (b.status === 'doing' ? -1 : 0)).slice(0, 3);
+}
+function renderTimeSuggestions() {
+  const today = state.computed.today;
+  return `<section class="panel time-suggestions"><div class="panel-heading"><h3>空き時間から選ぶ</h3></div><div class="filters time-budgets">${[15, 30, 60, 90].map(minutes => `<button data-action="time-budget" data-minutes="${minutes}" class="${minutes === availableMinutes ? 'active' : ''}" aria-pressed="${minutes === availableMinutes}">${minutes}分</button>`).join('')}</div><p class="hint">見積時間・期限・優先度から候補を表示</p><div class="stack-list">${timeCandidates().map(task => {
+    const reason = task.dueDate && task.dueDate < today ? '期限超過' : task.dueDate === today ? '今日が期限' : task.priority === 'high' ? '優先度：高' : task.status === 'doing' ? '作業中' : task.scheduledDate === today ? '今日の予定' : task.scheduledDate ? '予定日経過' : '未予定';
+    return `<article class="time-candidate"><button class="task-title" data-action="edit-task" data-id="${task.id}">${escapeHtml(task.title)}</button><small>${task.estimateMinutes ? `${task.estimateMinutes}分` : '25分（見積未設定）'} · ${reason}</small><button class="button ghost" data-action="start-candidate" data-id="${task.id}">取り組む</button></article>`;
+  }).join('') || '<p class="muted-copy">この時間に収まる候補はありません。</p>'}</div></section>`;
+}
+function bulkTaskTitles(value) {
+  return value.split(/\r?\n/).map(line => line.trim().replace(/^(?:[-*•]|\d+[.)])\s+/, '').replace(/^\[[ xX]\]\s*/, '').trim()).filter(Boolean);
+}
+function showBatchTasks() {
+  if (!$('#batchTaskDialog')) {
+    const dialog = document.createElement('dialog');
+    dialog.id = 'batchTaskDialog';
+    dialog.setAttribute('aria-labelledby', 'batchTaskHeading');
+    dialog.innerHTML = `<form id="batchTaskForm" class="dialog-body"><button class="dialog-close" type="button" id="closeBatchTasks" aria-label="閉じる">×</button><h2 id="batchTaskHeading">タスクを一括追加</h2><label><span>1行に1タスク（最大50件）</span><textarea id="batchTaskInput" rows="7" maxlength="20000" required placeholder="資料を確認する&#10;見積を作成する&#10;日程を調整する"></textarea></label><label><span>プロジェクト</span><select id="batchTaskProject"></select></label><label class="check"><input id="batchTaskToday" type="checkbox">今日の予定にする</label><p class="hint" id="batchTaskCount" aria-live="polite"></p><ol id="batchTaskPreview" class="batch-preview"></ol><div class="dialog-actions"><button class="button primary" id="saveBatchTasks" type="submit">追加</button></div></form>`;
+    document.body.append(dialog);
+    $('#closeBatchTasks').onclick = () => dialog.close();
+    $('#batchTaskInput').addEventListener('input', updateBatchPreview);
+    $('#batchTaskForm').onsubmit = async event => {
+      event.preventDefault();
+      if (!updateBatchPreview()) return;
+      const submittedDraft = $('#batchTaskInput').value;
+      const response = await mutate('/api/task/batch', { titles: bulkTaskTitles(submittedDraft), projectId: $('#batchTaskProject').value || null, scheduledDate: $('#batchTaskToday').checked ? state.computed.today : null }, 'タスクをまとめて追加しました');
+      if (response && $('#batchTaskInput').value === submittedDraft) { dialog.close(); $('#batchTaskInput').value = ''; }
+      updateBatchPreview();
+    };
+  }
+  const selection = $('#batchTaskProject').value;
+  fillProjectSelect('#batchTaskProject');
+  $('#batchTaskProject').value = selection || (currentView === 'tasks' ? taskProjectFilter : '');
+  if (!$('#batchTaskInput').value) $('#batchTaskToday').checked = currentView === 'today';
+  updateBatchPreview();
+  openDialog('#batchTaskDialog');
+  $('#batchTaskInput').focus();
+}
+function updateBatchPreview() {
+  const titles = bulkTaskTitles($('#batchTaskInput').value);
+  const valid = titles.length > 0 && titles.length <= 50 && titles.every(title => title.length <= 300);
+  $('#batchTaskCount').textContent = titles.length > 50 ? '50件以下に分けてください。' : titles.some(title => title.length > 300) ? '各タスクは300文字以内にしてください。' : `${titles.length}件を追加します`;
+  $('#batchTaskPreview').innerHTML = titles.slice(0, 50).map(title => `<li>${escapeHtml(title)}</li>`).join('');
+  $('#saveBatchTasks').disabled = !valid || busyDepth > 0;
+  return valid;
+}
+document.addEventListener('click', event => {
+  const target = event.target.closest('[data-action]');
+  if (!target) return;
+  if (target.dataset.action === 'focus-preset') {
+    const input = $('#startFocusForm [name=plannedMinutes]');
+    if (input) { input.value = target.dataset.minutes; input.focus(); }
+  }
+  if (target.dataset.action === 'batch-tasks') showBatchTasks();
+  if (target.dataset.action === 'time-budget') {
+    availableMinutes = Number(target.dataset.minutes);
+    render();
+  }
+  if (target.dataset.action === 'start-candidate') {
+    const task = state.tasks.find(item => item.id === target.dataset.id);
+    if (!task) return;
+    showFocus(task.id);
+    const select = $('#startFocusForm [name=plannedMinutes]');
+    if (select) {
+      const minutes = Math.min(180, task.estimateMinutes || 25);
+      select.value = String(minutes);
+    }
+  }
+});
 start();

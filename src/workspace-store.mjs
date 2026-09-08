@@ -375,6 +375,16 @@ export class WorkspaceStore {
           ),
         ].slice(0, 20);
       }
+      if (input.healthRoots !== undefined) {
+        if (!Array.isArray(input.healthRoots) || input.healthRoots.length < 1 || input.healthRoots.length > 20)
+          throw new Error("診断対象フォルダを1〜20件指定してください。");
+        const roots = input.healthRoots.map(value => {
+          const root = text(value, "診断対象", 500);
+          if (!path.isAbsolute(root)) throw new Error("フォルダは絶対パスで指定してください。");
+          return path.resolve(root);
+        });
+        draft.settings.healthRoots = [...new Map(roots.map(root => [process.platform === 'win32' ? root.toLowerCase() : root, root])).values()];
+      }
       if (input.writeRoot !== undefined)
         draft.settings.writeRoot = path.resolve(
           text(input.writeRoot, "自動化の保存先", 500),
@@ -531,6 +541,27 @@ export class WorkspaceStore {
         task.title,
       );
       return task;
+    });
+  }
+
+  async createTaskBatch(input) {
+    if (!Array.isArray(input.titles) || !input.titles.length || input.titles.length > 50)
+      throw new Error('タスクは1〜50件で入力してください。');
+    const titles = input.titles.map(title => text(title, 'タスク', 300));
+    const scheduledDate = optionalDate(input.scheduledDate, '予定日');
+    return this.change(draft => {
+      if (input.projectId && !draft.projects.some(project => project.id === input.projectId))
+        throw new Error('プロジェクトが見つかりません。');
+      const stamp = nowIso();
+      const tasks = titles.map(title => {
+        const task = { id: id('task'), title, notes: '', status: 'todo', priority: 'normal', dueDate: null,
+          projectId: input.projectId || null, tags: [], createdAt: stamp, updatedAt: stamp, completedAt: null };
+        taskDetails(task, { scheduledDate, estimateMinutes: 25 });
+        return task;
+      });
+      draft.tasks.unshift(...tasks);
+      this.activity(draft, 'task', 'タスクを一括追加', `${tasks.length}件`);
+      return tasks;
     });
   }
 

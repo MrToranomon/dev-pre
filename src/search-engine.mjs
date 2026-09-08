@@ -344,7 +344,7 @@ export class SearchEngine {
 }
 
 export async function fileHealth(settings) {
-  const roots = settings.searchRoots.filter(Boolean);
+  const roots = (settings.healthRoots ?? settings.searchRoots).filter(Boolean);
   const walked = await walkFiles(roots, {
     maxFiles: Math.min(settings.searchMaxFiles, 30_000),
   });
@@ -400,19 +400,17 @@ export async function fileHealth(settings) {
         });
   }
   duplicateGroups.sort((a, b) => b.recoverableBytes - a.recoverableBytes);
-  const volumes = [];
-  for (const root of roots) {
-    try {
-      const stats = await fs.statfs(root);
-      volumes.push({
-        root,
-        total: stats.blocks * stats.bsize,
-        free: stats.bavail * stats.bsize,
-      });
-    } catch (error) {
-      walked.errors.push({ path: root, error: error.message });
-    }
+  // Attribute each scanned file to its most specific configured root once.
+  // These are file totals, not repeated free-space figures for the same disk.
+  const rootKey = value => process.platform === 'win32' ? value.toLowerCase() : value;
+  const folders = [...new Map(roots.map(root => [rootKey(path.resolve(root)), path.resolve(root)])).values()]
+    .sort((a, b) => b.length - a.length)
+    .map(root => ({ root, files: 0, bytes: 0 }));
+  for (const file of walked.files) {
+    const folder = folders.find(item => within(item.root, file.path));
+    if (folder) { folder.files++; folder.bytes += file.size; }
   }
+  folders.sort((a, b) => b.bytes - a.bytes);
   return {
     scannedAt: new Date().toISOString(),
     files: walked.files.length,
@@ -425,7 +423,7 @@ export async function fileHealth(settings) {
       (sum, item) => sum + item.recoverableBytes,
       0,
     ),
-    volumes,
+    folders,
     errors: walked.errors.slice(0, 100),
   };
 }
